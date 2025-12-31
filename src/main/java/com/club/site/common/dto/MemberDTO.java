@@ -14,11 +14,12 @@ public class MemberDTO {
     private String name;
     private String generation;
     private String part;       // 나중에 Enum으로 바꾸기
-    private String bio;
 
     private List<SocialLink> socialLinks;
     private List<String> skillIds;
     private GithubInfo github;
+    private String bio;           // 한 줄 소개
+    private String introduction;  // 상세 자기소개
     private String status;    // ACTIVE 또는 ANONYMIZED
     private String createdAt;
     private String updatedAt;
