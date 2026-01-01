@@ -1,6 +1,6 @@
-package com.club.site.common.service;
+package com.club.site.member.service;
 
-import com.club.site.common.dto.MemberDTO;
+import com.club.site.member.dto.MemberDTO;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.Firestore;
@@ -93,3 +93,4 @@ public class MemberService {
         return list;
     }
 }
+
