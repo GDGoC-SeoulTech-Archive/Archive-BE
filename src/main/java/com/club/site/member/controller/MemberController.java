@@ -1,8 +1,8 @@
-package com.club.site.common.controller;
+package com.club.site.member.controller;
 
 import com.club.site.common.response.ApiResponse;
-import com.club.site.common.dto.MemberDTO;
-import com.club.site.common.service.MemberService; // 서비스 임포트
+import com.club.site.member.dto.MemberDTO;
+import com.club.site.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,3 +44,4 @@ public class MemberController {
         return ApiResponse.success(null);
     }
 }
+

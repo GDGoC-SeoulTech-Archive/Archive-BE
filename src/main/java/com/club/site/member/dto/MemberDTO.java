@@ -1,4 +1,4 @@
-package com.club.site.common.dto;
+package com.club.site.member.dto;
 
 import com.google.cloud.Timestamp; // Firebase Timestamp
 import lombok.*;
@@ -45,3 +45,4 @@ public class MemberDTO {
         private String username;
     }
 }
+
