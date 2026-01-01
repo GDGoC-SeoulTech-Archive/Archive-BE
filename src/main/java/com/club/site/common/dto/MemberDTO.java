@@ -1,34 +1,40 @@
 package com.club.site.common.dto;
 
+import com.google.cloud.Timestamp; // Firebase Timestamp
 import lombok.*;
-
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder // 빌더 패턴 추가 (나중에 객체 만들 때 엄청 편해요)
+@Builder
 public class MemberDTO {
     private String uid;
     private String name;
     private String generation;
-    private String part;       // 나중에 Enum으로 바꾸기
+    private String part;
+    private String status;
+    private String bio;
+
+    private String photoUrl;
 
     private List<SocialLink> socialLinks;
     private List<String> skillIds;
+
     private GithubInfo github;
-    private String bio;           // 한 줄 소개
-    private String introduction;  // 상세 자기소개
-    private String status;    // ACTIVE 또는 ANONYMIZED
-    private String createdAt;
-    private String updatedAt;
+
+    private Timestamp createdAt;
+    private Timestamp updatedAt;
+
+    private String introduction;
 
     @Getter @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SocialLink {
-        private String type; // GITHUB, BLOG...
+        private String type;
         private String url;
     }
 
@@ -37,6 +43,5 @@ public class MemberDTO {
     @AllArgsConstructor
     public static class GithubInfo {
         private String username;
-        private String photoUrl;
     }
 }
