@@ -41,8 +41,10 @@ public class MemberDTO {
     @Getter @Setter
     @NoArgsConstructor
     @AllArgsConstructor
+    @Builder
     public static class GithubInfo {
         private String username;
+        private String photoUrl;
     }
 }
 

@@ -38,3 +38,5 @@ out/
 
 ### Firebase ###
 serviceAccountKey.json
+**/serviceAccountKey.json
+src/main/resources/serviceAccountKey.json

@@ -33,6 +33,7 @@ public enum ErrorCode {
 
     // 공통
     INVALID_INPUT("INVALID_INPUT", "잘못된 입력입니다."),
+    INVALID_ARGUMENT("INVALID_ARGUMENT", "잘못된 인자입니다."),
     INTERNAL_SERVER_ERROR("INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다."),
     BAD_REQUEST("BAD_REQUEST", "잘못된 요청입니다.");
 

@@ -1,40 +1,58 @@
-package com.club.site.config.FirebaseConfig; // 패키지명 확인하세요
+package com.club.site.config.FirebaseConfig;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseAuth;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 
+@Slf4j
 @Configuration
 public class FirebaseConfig {
 
     @Bean
     public FirebaseApp firebaseApp() throws IOException {
-        // 이미 켜져 있으면 그거 씀
+        // 이미 초기화되어 있으면 그거 사용
         if (!FirebaseApp.getApps().isEmpty()) {
             return FirebaseApp.getInstance();
         }
 
-        // ⚠️ 파일 경로가 틀리면 여기서 또 에러 납니다. 정확한지 확인!
-        FileInputStream serviceAccount =
-                new FileInputStream("src/main/resources/serviceAccountKey.json");
+        try {
+            // classpath에서 파일 찾기
+            ClassPathResource resource = new ClassPathResource("serviceAccountKey.json");
+            
+            if (!resource.exists()) {
+                log.warn("Firebase 설정 파일(serviceAccountKey.json)이 없습니다. Firebase 기능은 사용할 수 없습니다.");
+                return null;
+            }
 
-        FirebaseOptions options = FirebaseOptions.builder()
-                .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                .build();
+            InputStream serviceAccount = resource.getInputStream();
+            FirebaseOptions options = FirebaseOptions.builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .build();
 
-        return FirebaseApp.initializeApp(options);
+            FirebaseApp app = FirebaseApp.initializeApp(options);
+            log.info("Firebase Admin SDK 초기화 완료");
+            return app;
+        } catch (IOException e) {
+            log.error("Firebase 초기화 실패: {}", e.getMessage());
+            log.warn("Firebase 기능 없이 서버를 계속 실행합니다.");
+            return null;
+        }
     }
 
-    // 👇 여기가 중요합니다! (수정된 부분)
     @Bean
-    public FirebaseAuth firebaseAuth(FirebaseApp firebaseApp) { // 1. 괄호 안에 이걸 넣으세요
-        // 2. 이렇게 하면 스프링이 "아! App이 먼저구나" 하고 App을 먼저 만듭니다.
+    public FirebaseAuth firebaseAuth(FirebaseApp firebaseApp) {
+        if (firebaseApp == null) {
+            log.warn("FirebaseApp이 초기화되지 않아 FirebaseAuth를 생성할 수 없습니다.");
+            return null;
+        }
         return FirebaseAuth.getInstance(firebaseApp);
     }
 }

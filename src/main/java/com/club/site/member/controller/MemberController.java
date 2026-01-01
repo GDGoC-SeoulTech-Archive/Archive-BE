@@ -2,6 +2,7 @@ package com.club.site.member.controller;
 
 import com.club.site.common.response.ApiResponse;
 import com.club.site.member.dto.MemberDTO;
+import com.club.site.member.dto.MemberListResponse;
 import com.club.site.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -20,12 +21,9 @@ public class MemberController {
     // POST http://localhost:8080/api/v1/members/init
     @PostMapping("/init")
     public ApiResponse<String> initData() {
-        // 컨트롤러는 "저장해줘"라고 시키기만 합니다.
-        // 데이터가 누군지, 몇 명인지는 Service가 알고 있습니다.
         String result = memberService.saveMockData();
         return ApiResponse.success(result);
     }
-
 
     @GetMapping("/me")
     public ApiResponse<MemberDTO> getMyProfile() {
@@ -33,15 +31,29 @@ public class MemberController {
         return ApiResponse.success(null);
     }
 
+    /**
+     * 멤버 리스트 조회 (필터 + 페이지네이션)
+     * GET /api/v1/members?generation=5기&part=WEB-FE&skillIds=React&skillIds=Vue&pageSize=20&cursor=...
+     */
     @GetMapping
-    public ApiResponse<List<MemberDTO>> getAllMembers() {
-        List<MemberDTO> members = memberService.getAllMembers();
-        return ApiResponse.success(members);
+    public ApiResponse<MemberListResponse> getAllMembers(
+            @RequestParam(required = false) String generation,
+            @RequestParam(required = false) String part,
+            @RequestParam(required = false) List<String> skillIds,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) String cursor
+    ) {
+        MemberListResponse response = memberService.getMembers(generation, part, skillIds, pageSize, cursor);
+        return ApiResponse.success(response);
     }
 
+    /**
+     * 멤버 상세 조회 (공개)
+     * GET /api/v1/members/{uid}
+     */
     @GetMapping("/{uid}")
     public ApiResponse<MemberDTO> getMemberDetail(@PathVariable String uid) {
-        return ApiResponse.success(null);
+        MemberDTO member = memberService.getMemberByUid(uid);
+        return ApiResponse.success(member);
     }
 }
-
