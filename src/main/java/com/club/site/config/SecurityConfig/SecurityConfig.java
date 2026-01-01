@@ -1,61 +1,37 @@
-package com.club.site.config.SecurityConfig;
+package com.club.site.common.config;
 
-import com.club.site.common.security.filter.FirebaseTokenFilter;
-import com.google.firebase.auth.FirebaseAuth;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
-import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
 
-    // 1. 파이어베이스 인증 객체 주입 (FirebaseConfig)
-    private final FirebaseAuth firebaseAuth;
-
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // HealthCheck나 로그인 없이 볼 수 있는 API는 허용
-                        .requestMatchers("/api/v1/health", "/api/v1/members", "/api/v1/posts").permitAll()
-                        // 나머지는 인증된 사람만
-                        .requestMatchers("/api/v1/me/**").authenticated()
+                        // 🚨 가장 중요한 부분: 아래 두 줄이 꼭 있어야 합니다.
+                        // swagger-ui/** 는 화면(HTML)을 보여주는 경로
+                        // /v3/api-docs/** 는 실제 데이터(JSON)를 가져오는 경로 (이게 막히면 저 에러가 뜹니다)
+                        .requestMatchers(
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**"
+                        ).permitAll()
+
+                        // API 경로 허용
+                        .requestMatchers("/api/v1/**").permitAll()
+
                         .anyRequest().authenticated()
-                )
-                // UsernamePassword 필터보다 앞에서 검사해라!
-                .addFilterBefore(new FirebaseTokenFilter(firebaseAuth), UsernamePasswordAuthenticationFilter.class);
+                );
 
         return http.build();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        // ... (기존 코드 그대로 유지) ...
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
     }
 }
