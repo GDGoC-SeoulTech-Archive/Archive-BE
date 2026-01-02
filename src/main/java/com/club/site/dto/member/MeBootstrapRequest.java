@@ -1,13 +1,10 @@
 package com.club.site.dto.member;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 
 public record MeBootstrapRequest(
         @NotBlank String name,
-        @NotBlank @Pattern(regexp = "^[0-9]+�?", message = "generation must match N�?(e.g. 1�?") String generation,
+        // 어차피 string이니 'n기' 로 저장
+        @NotBlank String generation,
         @NotBlank String part
-) {
-}
-
-
+) {}
