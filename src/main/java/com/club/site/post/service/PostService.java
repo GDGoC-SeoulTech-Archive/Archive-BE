@@ -81,7 +81,7 @@ public class PostService {
 
         String authorName;
         try {
-            authorName = memberService.getPublicMember(actorUid).name();
+            authorName = memberService.getMemberByUid(actorUid).name();
         } catch (Exception e) {
             authorName = "Unknown";
         }

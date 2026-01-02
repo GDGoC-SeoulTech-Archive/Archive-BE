@@ -1,319 +1,616 @@
 package com.club.site.member.service;
 
-import com.club.site.common.dto.PagedResult;
+import com.club.site.common.exception.BusinessException;
+import com.club.site.common.error.ErrorCode;
 import com.club.site.member.dto.GithubDTO;
 import com.club.site.member.dto.MemberDTO;
-import com.club.site.member.dto.SocialLinkRequest;
+import com.club.site.member.dto.MemberListResponse;
 import com.club.site.model.MemberStatus;
 import com.club.site.model.Part;
 import com.club.site.model.SocialLink;
 import com.club.site.model.SocialLinkType;
-import com.club.site.skill.service.SkillService;
-import com.club.site.util.CursorCodec;
 import com.club.site.util.FirestoreUtils;
-import com.club.site.util.UrlUtils;
-import com.club.site.web.ApiException;
+import com.google.api.core.ApiFuture;
 import com.google.cloud.Timestamp;
-import com.google.cloud.firestore.*;
-import org.springframework.http.HttpStatus;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.Query;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
+import com.google.firebase.cloud.FirestoreClient;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class MemberService {
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 50;
 
-    private final Firestore firestore;
-    private final SkillService skillService;
+    @Value("${pagination.default.page-size:20}")
+    private int defaultPageSize;
 
-    public MemberService(Firestore firestore, SkillService skillService) {
-        this.firestore = firestore;
-        this.skillService = skillService;
+    @Value("${pagination.max.page-size:50}")
+    private int maxPageSize;
+
+    // 허용된 part 값들
+    private static final Set<String> VALID_PARTS = Set.of("WEB-FE", "WEB-BE", "App", "AI", "Design");
+
+    // 컨트롤러가 호출하는 그 메서드!
+    public String saveMockData() {
+        Firestore db = FirestoreClient.getFirestore();
+        List<MemberDTO> mockList = createMockMembers();
+
+        int count = 0;
+        int indexCount = 0;
+        for (MemberDTO member : mockList) {
+            try {
+                Map<String, Object> data = new HashMap<>();
+                data.put("uid", member.uid());
+                data.put("name", member.name());
+                data.put("generation", member.generation());
+                data.put("part", member.part().name()); // enum name으로 저장 ("APP", "WEB_FE" 등)
+                data.put("bio", member.bio());
+                data.put("socialLinks", member.socialLinks());
+                data.put("skillIds", member.skillIds());
+                data.put("github", member.github());
+                data.put("status", member.status().name());
+                if (member.createdAt() != null) {
+                    data.put("createdAt", Timestamp.parseTimestamp(member.createdAt()));
+                }
+                if (member.updatedAt() != null) {
+                    data.put("updatedAt", Timestamp.parseTimestamp(member.updatedAt()));
+                }
+                
+                db.collection("members").document(member.uid()).set(data);
+                count++;
+
+                // 2. 역인덱스 생성 (skillIds가 있는 경우)
+                if (member.skillIds() != null && !member.skillIds().isEmpty()) {
+                    for (String skillId : member.skillIds()) {
+                        try {
+                            Map<String, Object> indexData = new HashMap<>();
+                            indexData.put("uid", member.uid());
+                            indexData.put("createdAt", Timestamp.now());
+
+                            db.collection("skill_members")
+                                    .document(skillId)
+                                    .collection("members")
+                                    .document(member.uid())
+                                    .set(indexData);
+                            indexCount++;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return count + "명의 멤버 저장 완료! (역인덱스 " + indexCount + "개 생성)";
     }
 
-    // [Mock Data Init]
-    public String saveMockData() {
-        List<Map<String, Object>> mockList = createMockMemberMaps();
-        WriteBatch batch = firestore.batch();
-        int count = 0;
-        for (Map<String, Object> data : mockList) {
-            String uid = (String) data.get("uid");
-            DocumentReference ref = firestore.collection("members").document(uid);
-            batch.set(ref, data, SetOptions.merge());
-            count++;
+    private List<MemberDTO> createMockMembers() {
+        List<MemberDTO> list = new ArrayList<>();
+        Timestamp now = Timestamp.now();
+        String nowStr = FirestoreUtils.toIsoString(now);
+
+        // 정우
+        list.add(new MemberDTO(
+                "1",
+                "염정우",
+                "5기",
+                Part.parse("App"),
+                "GDGOC가 터지면 제 탓입니다.",
+                List.of(new SocialLink(SocialLinkType.BLOG, "https://velog.io/@yjw326/posts")),
+                List.of("Spring Boot", "Java", "Kotlin"),
+                new GithubDTO("yeomine", "https://github.com/yeomine.png"),
+                MemberStatus.ACTIVE,
+                nowStr,
+                nowStr
+        ));
+
+        // 가연
+        list.add(new MemberDTO(
+                "2",
+                "이가연",
+                "5기",
+                Part.parse("WEB-FE"),
+                "프론트엔드 깎는 장인",
+                null,
+                List.of("React", "Vue", "Tailwind"),
+                null,
+                MemberStatus.ACTIVE,
+                nowStr,
+                nowStr
+        ));
+
+        // 대훈
+        list.add(new MemberDTO(
+                "3",
+                "권대훈",
+                "5기",
+                Part.parse("AI"),
+                "AI가 세상을 지배한다",
+                null,
+                List.of("Python", "TensorFlow", "React"), // React 공통 스킬 추가 (AND 필터 테스트용)
+                null,
+                MemberStatus.ACTIVE,
+                nowStr,
+                nowStr
+        ));
+
+        // 민석
+        list.add(new MemberDTO(
+                "4",
+                "최민석",
+                "5기",
+                Part.parse("Design"),
+                "하이하이~~",
+                null,
+                List.of("Figma", "React"), // React 공통 스킬 추가 (AND 필터 테스트용)
+                null,
+                MemberStatus.ACTIVE,
+                nowStr,
+                nowStr
+        ));
+
+        // 채영
+        list.add(new MemberDTO(
+                "5",
+                "임채영",
+                "5기",
+                Part.parse("WEB-BE"),
+                "서버 짓는 여인",
+                null,
+                List.of("Spring Boot", "Java", "React"), // React 공통 스킬 추가 (AND 필터 테스트용)
+                null,
+                MemberStatus.ACTIVE,
+                nowStr,
+                nowStr
+        ));
+
+        return list;
+    }
+
+    /**
+     * 멤버 리스트 조회 (필터 + 페이지네이션)
+     */
+    public MemberListResponse getMembers(
+            String generation,
+            String part,
+            List<String> skillIds,
+            Integer pageSize,
+            String cursor
+    ) {
+        // 1. pageSize 검증
+        int validPageSize = validatePageSize(pageSize);
+
+        // 2. part 검증
+        if (part != null && !VALID_PARTS.contains(part)) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "유효하지 않은 part 값입니다: " + part);
+        }
+
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            List<MemberDTO> members;
+
+            // 3. skillIds가 있으면 역인덱스 사용
+            if (skillIds != null && !skillIds.isEmpty()) {
+                members = getMembersBySkillIds(db, skillIds, generation, part);
+            } else {
+                // 4. skillIds가 없으면 일반 쿼리
+                members = getMembersByQuery(db, generation, part);
+            }
+
+            // 5. 정렬 (createdAt desc)
+            members.sort((a, b) -> {
+                if (a.createdAt() == null && b.createdAt() == null) return 0;
+                if (a.createdAt() == null) return 1;
+                if (b.createdAt() == null) return -1;
+                return b.createdAt().compareTo(a.createdAt()); // desc
+            });
+
+            // 6. cursor 파싱 및 필터링
+            if (cursor != null && !cursor.isEmpty()) {
+                members = applyCursor(members, cursor);
+            }
+
+            // 7. 페이지네이션 적용
+            List<MemberDTO> pagedMembers = members.stream()
+                    .limit(validPageSize + 1) // nextCursor 확인을 위해 +1
+                    .collect(Collectors.toList());
+
+            // 8. nextCursor 생성
+            String nextCursor = null;
+            if (pagedMembers.size() > validPageSize) {
+                MemberDTO lastMember = pagedMembers.get(validPageSize - 1);
+                nextCursor = createCursor(lastMember);
+                pagedMembers = pagedMembers.subList(0, validPageSize);
+            }
+
+            return MemberListResponse.builder()
+                    .items(pagedMembers)
+                    .nextCursor(nextCursor)
+                    .build();
+
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "Firestore 조회 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * skillIds가 있을 때 역인덱스 사용
+     */
+    private List<MemberDTO> getMembersBySkillIds(
+            Firestore db,
+            List<String> skillIds,
+            String generation,
+            String part
+    ) throws InterruptedException, ExecutionException {
+        log.info("역인덱스 조회 시작 - skillIds: {}", skillIds);
+        
+        // 1. 각 skillId에 대해 skill_members/{skillId}/members에서 uid 목록 조회
+        List<Set<String>> uidSets = new ArrayList<>();
+        for (String skillId : skillIds) {
+            try {
+                ApiFuture<QuerySnapshot> future = db.collection("skill_members")
+                        .document(skillId)
+                        .collection("members")
+                        .get();
+                List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+                Set<String> uids = documents.stream()
+                        .map(QueryDocumentSnapshot::getId)
+                        .collect(Collectors.toSet());
+                log.info("skillId '{}'에 대한 uid 개수: {}", skillId, uids.size());
+                uidSets.add(uids);
+            } catch (Exception e) {
+                // skillId가 존재하지 않으면 빈 Set 추가
+                log.warn("skillId '{}' 조회 실패: {}", skillId, e.getMessage());
+                uidSets.add(new HashSet<>());
+            }
+        }
+
+        // 2. 교집합 계산
+        if (uidSets.isEmpty()) {
+            log.warn("uidSets가 비어있음");
+            return new ArrayList<>();
+        }
+
+        Set<String> intersection = new HashSet<>(uidSets.get(0));
+        for (int i = 1; i < uidSets.size(); i++) {
+            intersection.retainAll(uidSets.get(i));
+        }
+
+        log.info("교집합 uid 개수: {}", intersection.size());
+
+        // 교집합이 비어있으면 빈 리스트 반환
+        if (intersection.isEmpty()) {
+            log.warn("교집합이 비어있음 - skillIds: {}", skillIds);
+            return new ArrayList<>();
+        }
+
+        // 3. 교집합 uid들을 members/{uid}에서 배치 조회
+        List<MemberDTO> members = new ArrayList<>();
+        for (String uid : intersection) {
+            try {
+                ApiFuture<com.google.cloud.firestore.DocumentSnapshot> future = db.collection("members")
+                        .document(uid)
+                        .get();
+                com.google.cloud.firestore.DocumentSnapshot document = future.get();
+                if (document.exists()) {
+                    try {
+                        MemberDTO member = convertDocumentToMemberDTO(document);
+                        if (member != null) {
+                            // 4. generation/part 필터 적용
+                            // part는 enum name으로 저장되어 있으므로 비교
+                            boolean partMatches = true;
+                            if (part != null && !part.isEmpty()) {
+                                try {
+                                    Part partEnum = Part.parse(part);
+                                    partMatches = member.part() != null && member.part().name().equals(partEnum.name());
+                                } catch (Exception e) {
+                                    partMatches = false;
+                                }
+                            }
+                            if ((generation == null || generation.equals(member.generation())) && partMatches) {
+                                members.add(member);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("문서 변환 실패 - uid: {}, error: {}", uid, e.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                // 개별 문서 조회 실패는 무시
+                e.printStackTrace();
+            }
+        }
+
+        return members;
+    }
+
+    /**
+     * skillIds가 없을 때 일반 쿼리
+     */
+    private List<MemberDTO> getMembersByQuery(
+            Firestore db,
+            String generation,
+            String part
+    ) throws InterruptedException, ExecutionException {
+        Query query = db.collection("members");
+
+        // generation 필터
+        if (generation != null && !generation.isEmpty()) {
+            query = query.whereEqualTo("generation", generation);
+        }
+
+        // part 필터 - enum name으로 변환 (Firestore에 enum name으로 저장되므로)
+        if (part != null && !part.isEmpty()) {
+            try {
+                Part partEnum = Part.parse(part);
+                query = query.whereEqualTo("part", partEnum.name()); // enum name으로 쿼리
+            } catch (Exception e) {
+                log.warn("Part 변환 실패 - part: {}, error: {}", part, e.getMessage());
+                // 변환 실패 시 빈 결과 반환
+                return new ArrayList<>();
+            }
+        }
+
+        // 쿼리 실행
+        ApiFuture<QuerySnapshot> future = query.get();
+        List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+
+        List<MemberDTO> members = new ArrayList<>();
+        for (QueryDocumentSnapshot document : documents) {
+            try {
+                MemberDTO member = convertDocumentToMemberDTO(document);
+                if (member != null) {
+                    members.add(member);
+                }
+            } catch (Exception e) {
+                log.warn("문서 변환 실패 - uid: {}, error: {}", document.getId(), e.getMessage());
+            }
+        }
+
+        return members;
+    }
+
+    /**
+     * cursor 적용 (cursor 이후의 데이터만 반환)
+     * cursor 형식: "timestampSeconds:timestampNanos:uid"
+     */
+    private List<MemberDTO> applyCursor(List<MemberDTO> members, String cursor) {
+        try {
+            String[] parts = cursor.split(":");
+            if (parts.length < 3) {
+                return members; // 잘못된 cursor는 무시
+            }
+
+            long seconds = Long.parseLong(parts[0]);
+            int nanos = Integer.parseInt(parts[1]);
+            String cursorUid = parts[2];
+            Timestamp cursorTimestamp = Timestamp.ofTimeSecondsAndNanos(seconds, nanos);
+
+            // cursor 이후의 데이터만 필터링 (createdAt desc 기준이므로 더 작은 값이 다음 페이지)
+            return members.stream()
+                    .filter(member -> {
+                        if (member.createdAt() == null) return false;
+                        // createdAt이 String이므로 Timestamp로 변환 필요
+                        try {
+                            // ISO 문자열을 Timestamp로 변환
+                            if (member.createdAt() == null) return false;
+                            java.time.Instant instant = java.time.Instant.parse(member.createdAt());
+                            Timestamp memberTs = Timestamp.ofTimeSecondsAndNanos(instant.getEpochSecond(), instant.getNano());
+                            int compare = memberTs.compareTo(cursorTimestamp);
+                            if (compare > 0) return true; // createdAt이 cursor보다 이후 (더 최신)
+                            if (compare < 0) return false; // createdAt이 cursor보다 이전
+                            // createdAt이 같으면 uid로 비교 (desc 정렬이므로 uid가 더 작은 것이 다음)
+                            return member.uid() != null && member.uid().compareTo(cursorUid) < 0;
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            // cursor 파싱 실패 시 전체 반환
+            return members;
+        }
+    }
+
+    /**
+     * cursor 생성 (seconds:nanos:uid 형식)
+     */
+    private String createCursor(MemberDTO member) {
+        if (member.createdAt() == null || member.uid() == null) {
+            return null;
         }
         try {
-            batch.commit().get();
+            // ISO 문자열을 Timestamp로 변환
+            java.time.Instant instant = java.time.Instant.parse(member.createdAt());
+            Timestamp timestamp = Timestamp.ofTimeSecondsAndNanos(instant.getEpochSecond(), instant.getNano());
+            return timestamp.getSeconds() + ":" + timestamp.getNanos() + ":" + member.uid();
         } catch (Exception e) {
-            e.printStackTrace();
-            return "Error: " + e.getMessage();
+            return null;
         }
-        return count + "명의 Mock Data 저장 완료!";
     }
 
-    private List<Map<String, Object>> createMockMemberMaps() {
-        // (내용 생략 - 기존과 동일하게 유지하거나 필요시 복사해서 넣으세요)
-        // 아까 작성해드린 createMockMemberMaps 로직 그대로 쓰시면 됩니다.
-        // 분량 조절을 위해 생략했습니다. 필요하면 다시 요청해주세요!
-        return new ArrayList<>();
-    }
-
-    // ==========================================
-    // [Main Logic] MemberDto -> MemberDTO 로 변경됨
-    // ==========================================
-
-    public MemberDTO bootstrap(String uid, String name, String generation, Part part, String photoUrl, String githubUsername) throws Exception {
-        DocumentReference ref = firestore.collection("members").document(uid);
-        DocumentSnapshot existing = ref.get().get();
-
-        Timestamp now = Timestamp.now();
-        Map<String, Object> update = new HashMap<>();
-        update.put("uid", uid);
-        update.put("name", name.trim());
-        update.put("generation", generation.trim());
-        update.put("part", part.name());
-        update.put("status", MemberStatus.ACTIVE.name());
-        update.put("updatedAt", now);
-
-        Map<String, Object> github = new HashMap<>();
-        if (githubUsername != null) github.put("username", githubUsername);
-        if (photoUrl != null) github.put("photoUrl", photoUrl);
-        if (!github.isEmpty()) update.put("github", github);
-
-        if (!existing.exists()) {
-            update.put("createdAt", now);
-            ref.set(update).get();
-        } else {
-            ref.set(update, SetOptions.merge()).get();
-        }
-
-        return toDto(ref.get().get());
-    }
-
-    public MemberDTO getMe(String uid) throws Exception {
-        return toDto(requireMember(uid));
-    }
-
-    public MemberDTO updateMe(String uid, String bio, List<SocialLinkRequest> socialLinks, List<String> skillIds) throws Exception {
-        DocumentSnapshot member = requireMember(uid);
-
-        if (skillIds != null) {
-            skillService.requireActiveSkills(skillIds);
-        }
-
-        List<String> beforeSkillIds = FirestoreUtils.asStringList(member.get("skillIds"));
-        List<String> afterSkillIds = skillIds == null ? beforeSkillIds : distinctPreserveOrder(skillIds);
-
-        Map<String, Object> update = new HashMap<>();
-        if (bio != null) update.put("bio", bio);
-        if (socialLinks != null) {
-            List<Map<String, Object>> mapped = new ArrayList<>();
-            for (SocialLinkRequest link : socialLinks) {
-                UrlUtils.requireHttpUrl(link.url(), "socialLinks.url");
-                SocialLinkType type;
-                try {
-                    type = SocialLinkType.valueOf(link.type().trim().toUpperCase(Locale.ROOT));
-                } catch (Exception e) {
-                    throw new ApiException("BAD_REQUEST", "Invalid type: " + link.type(), HttpStatus.BAD_REQUEST);
-                }
-                mapped.add(Map.of("type", type.name(), "url", link.url().trim()));
+    /**
+     * 멤버 상세 조회 (공개)
+     * @param uid 멤버 UID
+     * @return MemberDTO (ANONYMIZED 상태면 익명화된 필드만 반환)
+     * @throws BusinessException MEMBER_NOT_FOUND: uid에 해당하는 멤버 없음
+     */
+    public MemberDTO getMemberByUid(String uid) {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            if (db == null) {
+                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "Firestore가 초기화되지 않았습니다.");
             }
-            update.put("socialLinks", mapped);
-        }
-        if (skillIds != null) update.put("skillIds", afterSkillIds);
-        update.put("updatedAt", Timestamp.now());
 
-        WriteBatch batch = firestore.batch();
-        DocumentReference ref = firestore.collection("members").document(uid);
-        batch.set(ref, update, SetOptions.merge());
+            ApiFuture<com.google.cloud.firestore.DocumentSnapshot> future = db.collection("members")
+                    .document(uid)
+                    .get();
 
-        updateSkillIndex(batch, uid, beforeSkillIds, afterSkillIds);
+            com.google.cloud.firestore.DocumentSnapshot document = future.get();
 
-        batch.commit().get();
-        return toDto(ref.get().get());
-    }
-
-    private void updateSkillIndex(WriteBatch batch, String uid, List<String> before, List<String> after) {
-        Set<String> beforeSet = new HashSet<>(before);
-        Set<String> afterSet = new HashSet<>(after);
-        Timestamp now = Timestamp.now();
-
-        for (String add : afterSet) {
-            if (!beforeSet.contains(add)) {
-                DocumentReference idx = firestore.collection("skill_members").document(add).collection("members").document(uid);
-                batch.set(idx, Map.of("uid", uid, "createdAt", now), SetOptions.merge());
+            if (!document.exists()) {
+                throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "멤버를 찾을 수 없습니다: " + uid);
             }
-        }
-        for (String remove : beforeSet) {
-            if (!afterSet.contains(remove)) {
-                DocumentReference idx = firestore.collection("skill_members").document(remove).collection("members").document(uid);
-                batch.delete(idx);
+
+            MemberDTO member = convertDocumentToMemberDTO(document);
+            if (member == null) {
+                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "멤버 데이터를 파싱할 수 없습니다.");
             }
-        }
-    }
 
-    public void anonymizeMe(String uid) throws Exception {
-        DocumentSnapshot member = requireMember(uid);
-        List<String> beforeSkillIds = FirestoreUtils.asStringList(member.get("skillIds"));
-        Timestamp now = Timestamp.now();
-
-        WriteBatch batch = firestore.batch();
-        DocumentReference ref = firestore.collection("members").document(uid);
-
-        Map<String, Object> update = new HashMap<>();
-        update.put("status", MemberStatus.ANONYMIZED.name());
-        update.put("name", "Unknown");
-        update.put("bio", null);
-        update.put("socialLinks", List.of());
-        update.put("skillIds", List.of());
-        update.put("updatedAt", now);
-        batch.set(ref, update, SetOptions.merge());
-
-        for (String skillId : beforeSkillIds) {
-            DocumentReference idx = firestore.collection("skill_members").document(skillId).collection("members").document(uid);
-            batch.delete(idx);
-        }
-        batch.commit().get();
-
-        // 게시글 익명화 로직 등 추가 가능
-    }
-
-    public MemberDTO getPublicMember(String uid) throws Exception {
-        return toDto(requireMember(uid), true);
-    }
-
-    public PagedResult<MemberDTO> listMembers(String generation, String part, List<String> skillIds, Integer pageSize, String cursor) throws Exception {
-        int size = sanitizePageSize(pageSize);
-        if (skillIds == null || skillIds.isEmpty()) {
-            return listMembersSimple(generation, part, size, cursor);
-        }
-        return listMembersWithSkills(generation, part, distinctPreserveOrder(skillIds), size, cursor);
-    }
-
-    private PagedResult<MemberDTO> listMembersSimple(String generation, String part, int pageSize, String cursor) throws Exception {
-        Query q = firestore.collection("members");
-        if (generation != null && !generation.isBlank()) q = q.whereEqualTo("generation", generation.trim());
-        if (part != null && !part.isBlank()) q = q.whereEqualTo("part", Part.parse(part).name());
-        q = q.orderBy("createdAt", Query.Direction.DESCENDING).orderBy(FieldPath.documentId());
-
-        CursorCodec.Cursor decoded = CursorCodec.decodeOrNull(cursor);
-        if (decoded != null) {
-            Timestamp ts = FirestoreUtils.fromMillis(decoded.tsMillis());
-            if (ts != null) q = q.startAfter(ts, decoded.id());
-        }
-
-        List<QueryDocumentSnapshot> docs = q.limit(pageSize + 1).get().get().getDocuments();
-        boolean hasMore = docs.size() > pageSize;
-        List<? extends DocumentSnapshot> page = hasMore ? docs.subList(0, pageSize) : docs;
-
-        List<MemberDTO> items = page.stream().map(d -> toDto(d, true)).toList();
-        String nextCursor = getNextCursor(page, hasMore);
-        return new PagedResult<>(items, nextCursor);
-    }
-
-    private PagedResult<MemberDTO> listMembersWithSkills(String generation, String part, List<String> skillIds, int pageSize, String cursor) throws Exception {
-        // (스킬 검색 로직 - 기존과 동일, 생략 없이 필요하면 이전 답변 참조)
-        // ... intersection logic ...
-        // 여기서는 핵심인 DTO 반환 부분만 보여드립니다.
-
-        // (임시 빈 리스트 - 실제 로직은 이전 코드 복붙 필요)
-        List<MemberDTO> items = new ArrayList<>();
-        return new PagedResult<>(items, null);
-    }
-
-    private DocumentSnapshot requireMember(String uid) throws Exception {
-        DocumentSnapshot doc = firestore.collection("members").document(uid).get().get();
-        if (!doc.exists()) {
-            throw new ApiException("NOT_FOUND", "Member not found", HttpStatus.NOT_FOUND);
-        }
-        return doc;
-    }
-
-    private String getNextCursor(List<? extends DocumentSnapshot> page, boolean hasMore) {
-        if (hasMore && !page.isEmpty()) {
-            DocumentSnapshot last = page.get(page.size() - 1);
-            Timestamp ts = last.getTimestamp("createdAt");
-            if (ts != null) {
-                return CursorCodec.encode(new CursorCodec.Cursor(ts.toDate().getTime(), last.getId()));
+            // ANONYMIZED 상태면 익명화 처리
+            if (MemberStatus.ANONYMIZED.equals(member.status())) {
+                return anonymizeMember(member);
             }
+
+            return member;
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("멤버 조회 실패 - uid: {}", uid, e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "멤버 조회 중 오류가 발생했습니다.");
         }
-        return null;
     }
 
-    private static MemberDTO toDto(DocumentSnapshot doc) {
-        return toDto(doc, false);
-    }
-
-    // [핵심] Firestore 문서 -> Record(MemberDTO) 변환
-    private static MemberDTO toDto(DocumentSnapshot doc, boolean applyAnonymization) {
-        String statusStr = doc.getString("status");
-        boolean anonymized = MemberStatus.ANONYMIZED.name().equalsIgnoreCase(statusStr);
-
-        String name = doc.getString("name");
-        String bio = doc.getString("bio");
-        List<SocialLink> socialLinks = new ArrayList<>();
-
-        List<Map<String, Object>> rawLinks = FirestoreUtils.asMapList(doc.get("socialLinks"));
-        if (rawLinks != null) {
-            for (Map<String, Object> link : rawLinks) {
-                try {
-                    String typeStr = String.valueOf(link.get("type"));
-                    String url = String.valueOf(link.get("url"));
-                    socialLinks.add(new SocialLink(SocialLinkType.valueOf(typeStr), url));
-                } catch (Exception ignored) {}
-            }
-        }
-
-        List<String> skillIds = FirestoreUtils.asStringList(doc.get("skillIds"));
-
-        Map<String, Object> githubMap = FirestoreUtils.asMap(doc.get("github"));
-        GithubDTO githubDto = null;
-        if (githubMap != null) {
-            githubDto = new GithubDTO(
-                    String.valueOf(githubMap.get("username")),
-                    String.valueOf(githubMap.get("photoUrl"))
-            );
-        }
-
-        if (applyAnonymization && anonymized) {
-            name = "Unknown";
-            bio = null;
-            socialLinks = List.of();
-            skillIds = List.of();
-            githubDto = null;
-        }
-
+    /**
+     * 멤버 익명화 처리
+     * ANONYMIZED 상태일 때 PII 필드 제거/익명화
+     */
+    private MemberDTO anonymizeMember(MemberDTO member) {
+        // MemberDTO는 record이므로 새 인스턴스 생성
         return new MemberDTO(
-                doc.getId(),
-                name,
-                doc.getString("generation"),
-                Part.parse(doc.getString("part")),
-                bio,
-                socialLinks,
-                skillIds,
-                githubDto,
-                anonymized ? MemberStatus.ANONYMIZED : MemberStatus.ACTIVE,
-                FirestoreUtils.toIsoString(doc.getTimestamp("createdAt")), // String 변환됨
-                FirestoreUtils.toIsoString(doc.getTimestamp("updatedAt"))  // String 변환됨
+                member.uid(),
+                "탈퇴회원",
+                member.generation(), // 기수는 유지 가능 (정책에 따라)
+                member.part(), // 파트는 유지 가능 (정책에 따라)
+                null, // bio 제거
+                null, // socialLinks 제거
+                null, // skillIds 제거
+                null, // github 정보 제거 (PII)
+                MemberStatus.ANONYMIZED,
+                member.createdAt(),
+                member.updatedAt()
         );
     }
 
-    private int sanitizePageSize(Integer pageSize) {
-        int size = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
-        if (size < 1) size = DEFAULT_PAGE_SIZE;
-        return Math.min(size, MAX_PAGE_SIZE);
+    /**
+     * pageSize 검증
+     */
+    private int validatePageSize(Integer pageSize) {
+        if (pageSize == null) {
+            return defaultPageSize;
+        }
+        if (pageSize < 1) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "pageSize는 1 이상이어야 합니다.");
+        }
+        if (pageSize > maxPageSize) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "pageSize는 " + maxPageSize + " 이하여야 합니다.");
+        }
+        return pageSize;
     }
 
-    private static List<String> distinctPreserveOrder(List<String> values) {
-        if (values == null) return List.of();
-        LinkedHashSet<String> set = values.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isBlank())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        return new ArrayList<>(set);
+    /**
+     * Firestore DocumentSnapshot을 MemberDTO로 변환
+     * Part enum 변환 문제를 해결하기 위해 수동 변환 사용
+     */
+    private MemberDTO convertDocumentToMemberDTO(DocumentSnapshot document) {
+        try {
+            String uid = document.getId();
+            String name = document.getString("name");
+            String generation = document.getString("generation");
+            
+            // Part enum 변환 - Firestore에 저장된 문자열을 Part.parse()로 변환
+            Part part = null;
+            String partStr = document.getString("part");
+            if (partStr != null && !partStr.isEmpty()) {
+                try {
+                    part = Part.parse(partStr);
+                } catch (Exception e) {
+                    log.warn("Part 변환 실패 - part: {}, error: {}", partStr, e.getMessage());
+                    return null;
+                }
+            }
+            
+            String bio = document.getString("bio");
+            
+            // SocialLinks 변환
+            List<SocialLink> socialLinks = null;
+            List<Map<String, Object>> rawLinks = FirestoreUtils.asMapList(document.get("socialLinks"));
+            if (rawLinks != null && !rawLinks.isEmpty()) {
+                socialLinks = new ArrayList<>();
+                for (Map<String, Object> link : rawLinks) {
+                    try {
+                        String typeStr = String.valueOf(link.get("type"));
+                        String url = String.valueOf(link.get("url"));
+                        socialLinks.add(new SocialLink(SocialLinkType.valueOf(typeStr), url));
+                    } catch (Exception e) {
+                        log.warn("SocialLink 변환 실패 - link: {}, error: {}", link, e.getMessage());
+                    }
+                }
+            }
+            
+            // SkillIds 변환
+            List<String> skillIds = FirestoreUtils.asStringList(document.get("skillIds"));
+            
+            // Github 변환
+            GithubDTO github = null;
+            Map<String, Object> githubMap = FirestoreUtils.asMap(document.get("github"));
+            if (githubMap != null) {
+                String username = String.valueOf(githubMap.get("username"));
+                String photoUrl = String.valueOf(githubMap.get("photoUrl"));
+                if (!"null".equals(username) || !"null".equals(photoUrl)) {
+                    github = new GithubDTO(
+                            "null".equals(username) ? null : username,
+                            "null".equals(photoUrl) ? null : photoUrl
+                    );
+                }
+            }
+            
+            // Status 변환
+            MemberStatus status = MemberStatus.ACTIVE;
+            String statusStr = document.getString("status");
+            if (statusStr != null) {
+                try {
+                    status = MemberStatus.valueOf(statusStr);
+                } catch (Exception e) {
+                    log.warn("MemberStatus 변환 실패 - status: {}, error: {}", statusStr, e.getMessage());
+                }
+            }
+            
+            // Timestamp를 String으로 변환
+            String createdAt = FirestoreUtils.toIsoString(document.getTimestamp("createdAt"));
+            String updatedAt = FirestoreUtils.toIsoString(document.getTimestamp("updatedAt"));
+            
+            return new MemberDTO(
+                    uid,
+                    name,
+                    generation,
+                    part,
+                    bio,
+                    socialLinks,
+                    skillIds,
+                    github,
+                    status,
+                    createdAt,
+                    updatedAt
+            );
+        } catch (Exception e) {
+            log.error("MemberDTO 변환 실패 - documentId: {}, error: {}", document.getId(), e.getMessage(), e);
+            return null;
+        }
+    }
+
+    // 기존 메서드 (하위 호환성 유지)
+    public List<MemberDTO> getAllMembers() {
+        MemberListResponse response = getMembers(null, null, null, null, null);
+        return response.getItems();
     }
 }

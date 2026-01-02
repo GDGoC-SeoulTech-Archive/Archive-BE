@@ -1,7 +1,7 @@
 package com.club.site.member.controller;
 
-import com.club.site.common.dto.PagedResult;
 import com.club.site.member.dto.MemberDTO;
+import com.club.site.member.dto.MemberListResponse;
 import com.club.site.member.service.MemberService;
 import com.club.site.auth.dto.FirebasePrincipal;
 import com.club.site.web.ApiResponse;
@@ -14,11 +14,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "http://localhost:3000") // React(3000번)에서 요청 허용
 public class MemberController {
 
     private final MemberService memberService;
 
+    // 🔥 [핵심] 이 API를 호출하면 Mock 데이터가 DB에 저장됩니다.
+    // POST http://localhost:8080/api/v1/members/init
     @PostMapping("/init")
     public ApiResponse<String> initData() {
         String result = memberService.saveMockData();
@@ -26,23 +28,34 @@ public class MemberController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<MemberDTO> getMe(@AuthenticationPrincipal FirebasePrincipal principal) throws Exception {
-        return ApiResponse.ok(memberService.getMe(principal.uid()));
+    public ApiResponse<MemberDTO> getMyProfile() {
+        // (나중에 memberService.getMyProfile()로 교체 예정)
+        return ApiResponse.ok(null);
     }
 
+    /**
+     * 멤버 리스트 조회 (필터 + 페이지네이션)
+     * GET /api/v1/members?generation=5기&part=WEB-FE&skillIds=React&skillIds=Vue&pageSize=20&cursor=...
+     */
     @GetMapping
-    public ApiResponse<PagedResult<MemberDTO>> list(
+    public ApiResponse<MemberListResponse> getAllMembers(
             @RequestParam(required = false) String generation,
             @RequestParam(required = false) String part,
             @RequestParam(required = false) List<String> skillIds,
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) String cursor
-    ) throws Exception {
-        return ApiResponse.ok(memberService.listMembers(generation, part, skillIds, pageSize, cursor));
+    ) {
+        MemberListResponse response = memberService.getMembers(generation, part, skillIds, pageSize, cursor);
+        return ApiResponse.ok(response);
     }
 
+    /**
+     * 멤버 상세 조회 (공개)
+     * GET /api/v1/members/{uid}
+     */
     @GetMapping("/{uid}")
-    public ApiResponse<MemberDTO> get(@PathVariable String uid) throws Exception {
-        return ApiResponse.ok(memberService.getPublicMember(uid));
+    public ApiResponse<MemberDTO> getMemberDetail(@PathVariable String uid) {
+        MemberDTO member = memberService.getMemberByUid(uid);
+        return ApiResponse.ok(member);
     }
 }
