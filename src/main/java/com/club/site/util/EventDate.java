@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 public class EventDate {
     private static final Pattern ISO = Pattern.compile("^(\\d{4})-(\\d{2})-(\\d{2})$");
-    private static final Pattern KOREAN = Pattern.compile("^(\\d{4})??\\d{2})??\\d{2})??$");
+    private static final Pattern KOREAN = Pattern.compile("^(\\d{4})ÎÖÑ(\\d{2})Ïõî(\\d{2})Ïùº$");
 
     private EventDate() {
     }
@@ -29,7 +29,7 @@ public class EventDate {
             ensureValid(korean.group(1), korean.group(2), korean.group(3), input);
             return korean.group(1) + "-" + korean.group(2) + "-" + korean.group(3);
         }
-        throw new ApiException("BAD_REQUEST", "eventDate must be YYYY-MM-DD or YYYY?ÑMM?îDD", HttpStatus.BAD_REQUEST);
+        throw new ApiException("BAD_REQUEST", "eventDate must be YYYY-MM-DD format", HttpStatus.BAD_REQUEST);
     }
 
     private static void ensureValid(String yyyy, String mm, String dd, String original) {
@@ -40,5 +40,3 @@ public class EventDate {
         }
     }
 }
-
-

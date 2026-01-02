@@ -1,7 +1,7 @@
 package com.club.site.common.exception;
 
 import com.club.site.common.error.ErrorCode;
-import com.club.site.common.response.ApiResponse;
+import com.club.site.web.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,12 +13,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException e) {
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
         log.error("BusinessException: {}", e.getMessage());
         ErrorCode errorCode = e.getErrorCode();
         HttpStatus status = getHttpStatus(errorCode);
         return ResponseEntity.status(status)
-                .body(ApiResponse.error(errorCode.getCode(), errorCode.getMessage()));
+                .body(ApiResponse.fail(errorCode.getCode(), errorCode.getMessage()));
     }
 
     private HttpStatus getHttpStatus(ErrorCode errorCode) {

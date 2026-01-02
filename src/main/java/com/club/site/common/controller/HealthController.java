@@ -1,6 +1,6 @@
 package com.club.site.common.controller;
 
-import com.club.site.common.response.ApiResponse;
+import com.club.site.web.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,7 +13,7 @@ public class HealthController {
 
     @GetMapping
     public ApiResponse<Map<String, String>> health() {
-        return ApiResponse.success(Map.of("status", "ok", "message", "GDG Website API is running"));
+        return ApiResponse.ok(Map.of("status", "ok", "message", "GDG Website API is running"));
     }
 }
 
