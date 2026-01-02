@@ -1,6 +1,6 @@
 package com.club.site.member.controller;
 
-import com.club.site.common.response.ApiResponse;
+import com.club.site.web.ApiResponse;
 import com.club.site.member.dto.MemberDTO;
 import com.club.site.member.dto.MemberListResponse;
 import com.club.site.member.service.MemberService;
@@ -22,13 +22,13 @@ public class MemberController {
     @PostMapping("/init")
     public ApiResponse<String> initData() {
         String result = memberService.saveMockData();
-        return ApiResponse.success(result);
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/me")
     public ApiResponse<MemberDTO> getMyProfile() {
         // (나중에 memberService.getMyProfile()로 교체 예정)
-        return ApiResponse.success(null);
+        return ApiResponse.ok(null);
     }
 
     /**
@@ -44,7 +44,7 @@ public class MemberController {
             @RequestParam(required = false) String cursor
     ) {
         MemberListResponse response = memberService.getMembers(generation, part, skillIds, pageSize, cursor);
-        return ApiResponse.success(response);
+        return ApiResponse.ok(response);
     }
 
     /**
@@ -54,6 +54,6 @@ public class MemberController {
     @GetMapping("/{uid}")
     public ApiResponse<MemberDTO> getMemberDetail(@PathVariable String uid) {
         MemberDTO member = memberService.getMemberByUid(uid);
-        return ApiResponse.success(member);
+        return ApiResponse.ok(member);
     }
 }

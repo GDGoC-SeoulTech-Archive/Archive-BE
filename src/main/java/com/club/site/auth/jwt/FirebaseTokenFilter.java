@@ -1,4 +1,4 @@
-package com.club.site.common.security.filter;
+package com.club.site.auth.jwt;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;

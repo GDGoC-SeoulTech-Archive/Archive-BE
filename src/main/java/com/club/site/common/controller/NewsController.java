@@ -1,6 +1,6 @@
 package com.club.site.common.controller;
 
-import com.club.site.common.response.ApiResponse;
+import com.club.site.web.ApiResponse;
 import com.club.site.common.dto.NewsDTO;
 import com.club.site.common.service.NewsService;
 import lombok.RequiredArgsConstructor;
@@ -19,12 +19,12 @@ public class NewsController {
     // 초기화 버튼 (데이터 저장)
     @PostMapping("/init")
     public ApiResponse<String> initNews() {
-        return ApiResponse.success(newsService.saveMockNews());
+        return ApiResponse.ok(newsService.saveMockNews());
     }
 
     // 조회 (데이터 가져오기)
     @GetMapping
     public ApiResponse<List<NewsDTO>> getAllNews() {
-        return ApiResponse.success(newsService.getAllNews());
+        return ApiResponse.ok(newsService.getAllNews());
     }
 }

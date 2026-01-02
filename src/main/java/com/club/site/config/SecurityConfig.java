@@ -1,4 +1,4 @@
-package com.club.site.common.config;
+package com.club.site.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
