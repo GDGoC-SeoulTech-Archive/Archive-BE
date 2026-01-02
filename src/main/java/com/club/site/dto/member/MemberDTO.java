@@ -5,7 +5,6 @@ import com.club.site.model.Part;
 import com.club.site.model.SocialLink;
 import java.util.List;
 
-// class가 아니라 record입니다!
 public record MemberDTO(
         String uid,
         String name,
