@@ -43,11 +43,18 @@ public class SecurityConfig {
                         // 2. Preflight 요청(OPTIONS)은 무조건 허용 (CORS 처리를 위해)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 3. Public API (로그인 없이 접근 가능)
+                        // 3. Swagger(SpringDoc) 관련 경로 허용
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+
+                        // 4. Public API (로그인 없이 접근 가능)
                         .requestMatchers(HttpMethod.GET, "/api/v1/members", "/api/v1/members/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/members/init").permitAll()
 
-                        // 4. 나머지 API는 인증 필요
+                        // 5. 나머지 API는 인증 필요
                         .anyRequest().authenticated()
                 )
 
