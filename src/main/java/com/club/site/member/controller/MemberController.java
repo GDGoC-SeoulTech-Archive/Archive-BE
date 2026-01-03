@@ -3,27 +3,36 @@ package com.club.site.member.controller;
 import com.club.site.member.dto.MemberDTO;
 import com.club.site.member.dto.MemberListResponse;
 import com.club.site.member.service.MemberService;
-import com.club.site.auth.dto.FirebasePrincipal;
 import com.club.site.web.ApiResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Slf4j // 로그용입니다
 @RestController
 @RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000") // React(3000번)에서 요청 허용
+@CrossOrigin(origins = "http://localhost:3000") // React에서 요청 허용
 public class MemberController {
 
     private final MemberService memberService;
 
-    // 🔥 [핵심] 이 API를 호출하면 Mock 데이터가 DB에 저장됩니다.
+    // 멤버 Mock Data 초기화용
     // POST http://localhost:8080/api/v1/members/init
     @PostMapping("/init")
     public ApiResponse<String> initData() {
         String result = memberService.saveMockData();
+        return ApiResponse.ok(result);
+    }
+
+    // 회원가입 로직 추가
+    @PostMapping("/signup")
+    public ApiResponse<String> signup(@RequestBody MemberDTO memberDTO) {
+        log.info("🚀 회원가입 요청 도착! UID: {}, 이름: {}, Part: {}",
+                memberDTO.uid(), memberDTO.name(), memberDTO.part());
+        String result = memberService.signUp(memberDTO);
         return ApiResponse.ok(result);
     }
 
@@ -35,7 +44,7 @@ public class MemberController {
 
     /**
      * 멤버 리스트 조회 (필터 + 페이지네이션)
-     * GET /api/v1/members?generation=5기&part=WEB-FE&skillIds=React&skillIds=Vue&pageSize=20&cursor=...
+     * GET http://localhost:8080/api/v1/members?generation=5기&part=WEB-FE...
      */
     @GetMapping
     public ApiResponse<MemberListResponse> getAllMembers(
