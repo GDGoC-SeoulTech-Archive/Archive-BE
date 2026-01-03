@@ -99,20 +99,6 @@ public class MemberService {
         Timestamp now = Timestamp.now();
         String nowStr = FirestoreUtils.toIsoString(now);
 
-        // 정우
-        list.add(new MemberDTO(
-                "1",
-                "염정우",
-                "5기",
-                Part.parse("App"),
-                "GDGOC가 터지면 제 탓입니다.",
-                List.of(new SocialLink(SocialLinkType.BLOG, "https://velog.io/@yjw326/posts")),
-                List.of("Spring Boot", "Java", "Kotlin"),
-                new GithubDTO("yeomine", "https://github.com/yeomine.png"),
-                MemberStatus.ACTIVE,
-                nowStr,
-                nowStr
-        ));
 
         // 가연
         list.add(new MemberDTO(
@@ -612,5 +598,48 @@ public class MemberService {
     public List<MemberDTO> getAllMembers() {
         MemberListResponse response = getMembers(null, null, null, null, null);
         return response.getItems();
+    }
+
+    public String signUp(MemberDTO memberDTO) {
+        Firestore db = FirestoreClient.getFirestore();
+
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("uid", memberDTO.uid());
+            data.put("name", memberDTO.name());
+            data.put("generation", memberDTO.generation());
+            data.put("part", memberDTO.part().name());
+            data.put("bio", memberDTO.bio());
+
+            // SocialLink 리스트 변환 (DTO -> Map)
+            if (memberDTO.socialLinks() != null) {
+                List<Map<String, String>> links = memberDTO.socialLinks().stream()
+                        .map(link -> Map.of("type", link.type().name(), "url", link.url()))
+                        .collect(Collectors.toList());
+                data.put("socialLinks", links);
+            }
+
+            data.put("skillIds", memberDTO.skillIds());
+
+            // Github DTO 변환
+            if (memberDTO.github() != null) {
+                data.put("github", Map.of(
+                        "username", memberDTO.github().username(),
+                        "photoUrl", memberDTO.github().photoUrl()
+                ));
+            }
+
+            data.put("status", MemberStatus.ACTIVE.name());
+            data.put("createdAt", Timestamp.now());
+            data.put("updatedAt", Timestamp.now());
+
+            db.collection("members").document(memberDTO.uid()).set(data);
+
+            return "회원가입 성공: " + memberDTO.name();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "회원가입 실패: " + e.getMessage());
+        }
     }
 }
