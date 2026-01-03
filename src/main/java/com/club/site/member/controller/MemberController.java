@@ -2,7 +2,9 @@ package com.club.site.member.controller;
 
 import com.club.site.member.dto.MemberDTO;
 import com.club.site.member.dto.MemberListResponse;
+import com.club.site.member.dto.MemberDetailResponse;
 import com.club.site.member.service.MemberService;
+import com.club.site.auth.dto.FirebasePrincipal;
 import com.club.site.web.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Slf4j // 로그용입니다
 @RestController
 @RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
@@ -44,6 +45,7 @@ public class MemberController {
 
     /**
      * 멤버 리스트 조회 (필터 + 페이지네이션)
+     * GET /api/v1/members?generation=5기&part=WEB-FE&skillIds=React&skillIds=Vue&q=홍길동&pageSize=20&cursor=...
      * GET http://localhost:8080/api/v1/members?generation=5기&part=WEB-FE...
      */
     @GetMapping
@@ -51,10 +53,11 @@ public class MemberController {
             @RequestParam(required = false) String generation,
             @RequestParam(required = false) String part,
             @RequestParam(required = false) List<String> skillIds,
+            @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) String cursor
     ) {
-        MemberListResponse response = memberService.getMembers(generation, part, skillIds, pageSize, cursor);
+        MemberListResponse response = memberService.getMembers(generation, part, skillIds, q, pageSize, cursor);
         return ApiResponse.ok(response);
     }
 
@@ -63,8 +66,8 @@ public class MemberController {
      * GET /api/v1/members/{uid}
      */
     @GetMapping("/{uid}")
-    public ApiResponse<MemberDTO> getMemberDetail(@PathVariable String uid) {
+    public ApiResponse<MemberDetailResponse> getMemberDetail(@PathVariable String uid) {
         MemberDTO member = memberService.getMemberByUid(uid);
-        return ApiResponse.ok(member);
+        return ApiResponse.ok(new MemberDetailResponse(member));
     }
 }

@@ -5,6 +5,8 @@ import com.club.site.common.error.ErrorCode;
 import com.club.site.member.dto.GithubDTO;
 import com.club.site.member.dto.MemberDTO;
 import com.club.site.member.dto.MemberListResponse;
+import com.club.site.member.dto.MemberListItemDTO;
+import com.club.site.member.dto.SocialSummary;
 import com.club.site.model.MemberStatus;
 import com.club.site.model.Part;
 import com.club.site.model.SocialLink;
@@ -170,6 +172,7 @@ public class MemberService {
             String generation,
             String part,
             List<String> skillIds,
+            String q,
             Integer pageSize,
             String cursor
     ) {
@@ -187,10 +190,10 @@ public class MemberService {
 
             // 3. skillIds가 있으면 역인덱스 사용
             if (skillIds != null && !skillIds.isEmpty()) {
-                members = getMembersBySkillIds(db, skillIds, generation, part);
+                members = getMembersBySkillIds(db, skillIds, generation, part, q);
             } else {
                 // 4. skillIds가 없으면 일반 쿼리
-                members = getMembersByQuery(db, generation, part);
+                members = getMembersByQuery(db, generation, part, q);
             }
 
             // 5. 정렬 (createdAt desc)
@@ -219,10 +222,12 @@ public class MemberService {
                 pagedMembers = pagedMembers.subList(0, validPageSize);
             }
 
-            return MemberListResponse.builder()
-                    .items(pagedMembers)
-                    .nextCursor(nextCursor)
-                    .build();
+            // 9. MemberDTO를 MemberListItemDTO로 변환
+            List<MemberListItemDTO> listItems = pagedMembers.stream()
+                    .map(this::convertToListItem)
+                    .collect(Collectors.toList());
+
+            return new MemberListResponse(listItems, nextCursor);
 
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
@@ -237,7 +242,8 @@ public class MemberService {
             Firestore db,
             List<String> skillIds,
             String generation,
-            String part
+            String part,
+            String q
     ) throws InterruptedException, ExecutionException {
         log.info("역인덱스 조회 시작 - skillIds: {}", skillIds);
         
@@ -304,7 +310,13 @@ public class MemberService {
                                     partMatches = false;
                                 }
                             }
-                            if ((generation == null || generation.equals(member.generation())) && partMatches) {
+                            // 4-1. generation/part 필터 적용
+                            boolean generationMatches = generation == null || generation.equals(member.generation());
+                            // 4-2. 이름 검색 필터 적용 (q 파라미터)
+                            boolean nameMatches = q == null || q.isEmpty() || 
+                                    (member.name() != null && member.name().toLowerCase().contains(q.toLowerCase()));
+                            
+                            if (generationMatches && partMatches && nameMatches) {
                                 members.add(member);
                             }
                         }
@@ -327,7 +339,8 @@ public class MemberService {
     private List<MemberDTO> getMembersByQuery(
             Firestore db,
             String generation,
-            String part
+            String part,
+            String q
     ) throws InterruptedException, ExecutionException {
         Query query = db.collection("members");
 
@@ -357,7 +370,12 @@ public class MemberService {
             try {
                 MemberDTO member = convertDocumentToMemberDTO(document);
                 if (member != null) {
-                    members.add(member);
+                    // 이름 검색 필터 적용 (q 파라미터)
+                    // Firestore는 부분 문자열 검색이 제한적이므로 서버에서 필터링
+                    if (q == null || q.isEmpty() || 
+                            (member.name() != null && member.name().toLowerCase().contains(q.toLowerCase()))) {
+                        members.add(member);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("문서 변환 실패 - uid: {}, error: {}", document.getId(), e.getMessage());
@@ -594,10 +612,73 @@ public class MemberService {
         }
     }
 
+    /**
+     * MemberDTO를 MemberListItemDTO로 변환
+     * bioShort와 socialSummary 생성 포함
+     */
+    private MemberListItemDTO convertToListItem(MemberDTO member) {
+        // bioShort 생성 (bio 앞 80자)
+        String bioShort = null;
+        if (member.bio() != null && !member.bio().isEmpty()) {
+            bioShort = member.bio().length() > 80 
+                    ? member.bio().substring(0, 80) 
+                    : member.bio();
+        }
+
+        // socialSummary 생성
+        boolean hasGithub = false;
+        boolean hasLinkedin = false;
+        boolean hasInstagram = false;
+        
+        if (member.socialLinks() != null) {
+            for (SocialLink link : member.socialLinks()) {
+                if (link.type() == SocialLinkType.GITHUB) {
+                    hasGithub = true;
+                } else if (link.type() == SocialLinkType.LINKEDIN) {
+                    hasLinkedin = true;
+                } else if (link.type() == SocialLinkType.INSTAGRAM) {
+                    hasInstagram = true;
+                }
+            }
+        }
+        
+        SocialSummary socialSummary = new SocialSummary(hasGithub, hasLinkedin, hasInstagram);
+
+        return new MemberListItemDTO(
+                member.uid(),
+                member.name(),
+                member.generation(),
+                member.part(),
+                member.skillIds(),
+                member.github(),
+                bioShort,
+                socialSummary,
+                member.status()
+        );
+    }
+
     // 기존 메서드 (하위 호환성 유지)
     public List<MemberDTO> getAllMembers() {
-        MemberListResponse response = getMembers(null, null, null, null, null);
-        return response.getItems();
+        MemberListResponse response = getMembers(null, null, null, null, null, null);
+        return response.items().stream()
+                .map(item -> {
+                    // MemberListItemDTO를 MemberDTO로 역변환 (기존 코드 호환성)
+                    // 이 메서드는 사용되지 않을 수 있으므로 간단한 변환만 수행
+                    return new MemberDTO(
+                            item.uid(),
+                            item.name(),
+                            item.generation(),
+                            item.part(),
+                            null, // bio는 리스트에 없음
+                            null, // socialLinks는 리스트에 없음
+                            item.skillIds(),
+                            item.github(),
+                            item.status(),
+                            null, // createdAt
+                            null  // updatedAt
+                    );
+                })
+                .collect(Collectors.toList());
     }
 
     public String signUp(MemberDTO memberDTO) {

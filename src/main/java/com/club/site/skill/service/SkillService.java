@@ -2,6 +2,7 @@ package com.club.site.skill.service;
 
 import com.club.site.common.service.AuditLogService;
 import com.club.site.skill.dto.SkillDto;
+import com.club.site.skill.dto.SkillListItemDTO;
 import com.club.site.util.FirestoreUtils;
 import com.club.site.util.NormalizationUtils;
 import com.club.site.web.ApiException;
@@ -14,6 +15,7 @@ import com.google.cloud.firestore.QueryDocumentSnapshot;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,25 @@ public class SkillService {
         }
         List<QueryDocumentSnapshot> docs = q.get().get().getDocuments();
         return docs.stream().map(SkillService::toDto).collect(Collectors.toList());
+    }
+
+    /**
+     * Skill 목록 조회 (Public API용 - 필터 UI 구성용)
+     * 명세: id, label, category만 반환, category → label asc 정렬
+     */
+    public List<SkillListItemDTO> listForFilter() throws Exception {
+        Query q = firestore.collection("skills")
+                .whereEqualTo("active", true) // 활성화된 스킬만
+                .orderBy("normalized"); // Firestore 쿼리용 정렬
+        
+        List<QueryDocumentSnapshot> docs = q.get().get().getDocuments();
+        
+        return docs.stream()
+                .map(SkillService::toListItemDto)
+                .sorted(Comparator
+                        .comparing(SkillListItemDTO::category, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SkillListItemDTO::label))
+                .collect(Collectors.toList());
     }
 
     public SkillDto create(String displayName, String actorUid) throws Exception {
@@ -100,6 +121,23 @@ public class SkillService {
                 FirestoreUtils.toIsoString(doc.getTimestamp("createdAt")),
                 FirestoreUtils.toIsoString(doc.getTimestamp("updatedAt"))
         );
+    }
+
+    /**
+     * DocumentSnapshot을 SkillListItemDTO로 변환
+     * category가 없으면 기본값 "기타" 또는 null 처리
+     */
+    private static SkillListItemDTO toListItemDto(DocumentSnapshot doc) {
+        String id = doc.getId(); // normalized 값 (slug 형태)
+        String label = doc.getString("displayName"); // UI 표시용 이름
+        String category = doc.getString("category"); // category 필드 (없으면 null)
+        
+        // category가 없으면 기본값 설정 (정책에 따라 변경 가능)
+        if (category == null || category.isEmpty()) {
+            category = "기타";
+        }
+        
+        return new SkillListItemDTO(id, label, category);
     }
 }
 

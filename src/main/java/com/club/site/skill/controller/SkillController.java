@@ -20,9 +20,14 @@ public class SkillController {
         this.skillService = skillService;
     }
 
+    /**
+     * Skill 목록 조회 (Public - 필터 UI 구성용)
+     * GET /api/v1/skills
+     * 명세: id, label, category만 반환, category → label asc 정렬
+     */
     @GetMapping
-    public ApiResponse<SkillsResponse> list(@RequestParam(defaultValue = "false") boolean activeOnly) throws Exception {
-        return ApiResponse.ok(new SkillsResponse(skillService.list(activeOnly)));
+    public ApiResponse<SkillsResponse> list() throws Exception {
+        return ApiResponse.ok(new SkillsResponse(skillService.listForFilter()));
     }
 
     @PostMapping
