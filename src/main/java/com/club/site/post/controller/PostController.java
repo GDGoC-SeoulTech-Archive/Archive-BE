@@ -1,13 +1,21 @@
 package com.club.site.post.controller;
 
-import com.club.site.common.dto.PagedResult;
+import com.club.site.common.error.ErrorCode;
+import com.club.site.common.exception.BusinessException;
+import com.club.site.post.dto.PostCreateRequest;
+import com.club.site.post.dto.PostCreateResponse;
+import com.club.site.post.dto.PostDeleteResponse;
 import com.club.site.post.dto.PostDto;
-import com.club.site.post.dto.PostResponse;
+import com.club.site.post.dto.PostDetailResponse;
+import com.club.site.post.dto.PostListResponse;
 import com.club.site.post.dto.PostUpdateRequest;
+import com.club.site.post.dto.PostUpdateResponse;
 import com.club.site.post.service.PostService;
 import com.club.site.auth.dto.FirebasePrincipal;
 import com.club.site.web.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,36 +28,103 @@ public class PostController {
         this.postService = postService;
     }
 
+    /**
+     * 게시글 리스트 조회 (Public)
+     * GET /api/v1/posts?pageSize=20&cursor=...
+     */
     @GetMapping
-    public ApiResponse<PagedResult<PostDto>> list(
+    public ApiResponse<PostListResponse> list(
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) String cursor
     ) throws Exception {
-        return ApiResponse.ok(postService.listPosts(pageSize, cursor));
+        PostListResponse response = postService.listPosts(pageSize, cursor);
+        return ApiResponse.ok(response);
     }
 
+    /**
+     * 게시글 상세 조회 (Public)
+     * GET /api/v1/posts/{postId}
+     */
     @GetMapping("/{postId}")
-    public ApiResponse<PostResponse> get(@PathVariable String postId) throws Exception {
-        return ApiResponse.ok(new PostResponse(postService.getPost(postId)));
+    public ApiResponse<PostDetailResponse> get(@PathVariable String postId) throws Exception {
+        PostDto postDto = postService.getPost(postId);
+        PostDetailResponse.PostDetail postDetail = PostDetailResponse.PostDetail.from(postDto);
+        return ApiResponse.ok(new PostDetailResponse(postDetail));
     }
 
+    /**
+     * 게시글 생성 (Admin)
+     * POST /api/v1/posts
+     */
+    @PostMapping
+    public ResponseEntity<ApiResponse<PostCreateResponse>> create(
+            Authentication authentication,
+            @Valid @RequestBody PostCreateRequest request
+    ) throws Exception {
+        FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
+        
+        // Admin 권한 체크
+        if (!isAdmin(principal)) {
+            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
+        }
+        
+        PostDto postDto = postService.createPost(principal.uid(), request);
+        PostDetailResponse.PostDetail postDetail = PostDetailResponse.PostDetail.from(postDto);
+        PostCreateResponse response = new PostCreateResponse(postDto.id(), postDetail);
+        
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(response));
+    }
+    
+    /**
+     * Admin 권한 체크
+     */
+    private boolean isAdmin(FirebasePrincipal principal) {
+        return principal != null && "admin".equalsIgnoreCase(principal.role());
+    }
+
+    /**
+     * 게시글 수정 (Admin)
+     * PUT /api/v1/posts/{postId}
+     */
     @PutMapping("/{postId}")
-    public ApiResponse<PostResponse> update(
+    public ApiResponse<PostUpdateResponse> update(
             Authentication authentication,
             @PathVariable String postId,
             @Valid @RequestBody PostUpdateRequest request
     ) throws Exception {
         FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
-        return ApiResponse.ok(new PostResponse(
-                postService.updatePost(principal.uid(), postId, request.title(), request.body(), request.eventDate(), request.imageUrls())
-        ));
+        
+        // Admin 권한 체크
+        if (!isAdmin(principal)) {
+            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
+        }
+        
+        PostDto postDto = postService.updatePost(principal.uid(), postId, request);
+        PostDetailResponse.PostDetail postDetail = PostDetailResponse.PostDetail.from(postDto);
+        PostUpdateResponse response = new PostUpdateResponse(postDto.id(), postDetail);
+        
+        return ApiResponse.ok(response);
     }
 
+    /**
+     * 게시글 삭제 (Admin, 하드 삭제)
+     * DELETE /api/v1/posts/{postId}
+     */
     @DeleteMapping("/{postId}")
-    public ApiResponse<Void> delete(Authentication authentication, @PathVariable String postId) throws Exception {
+    public ApiResponse<PostDeleteResponse> delete(
+            Authentication authentication,
+            @PathVariable String postId
+    ) throws Exception {
         FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
+        
+        // Admin 권한 체크
+        if (!isAdmin(principal)) {
+            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
+        }
+        
         postService.deletePost(principal.uid(), postId);
-        return ApiResponse.ok();
+        return ApiResponse.ok(new PostDeleteResponse(true));
     }
 }
 

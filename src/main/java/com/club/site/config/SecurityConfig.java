@@ -51,8 +51,18 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // 4. Public API (로그인 없이 접근 가능)
+                        // Members API
                         .requestMatchers(HttpMethod.GET, "/api/v1/members", "/api/v1/members/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/members/init").permitAll()
+                        
+                        // Posts API (Public Read)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/posts", "/api/v1/posts/**").permitAll()
+                        
+                        // Skills API (Public Read)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/skills").permitAll()
+                        
+                        // Health Check
+                        .requestMatchers(HttpMethod.GET, "/api/v1/health").permitAll()
 
                         // 5. 나머지 API는 인증 필요
                         .anyRequest().authenticated()

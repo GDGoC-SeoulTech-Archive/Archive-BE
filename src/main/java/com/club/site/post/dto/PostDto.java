@@ -7,7 +7,7 @@ public record PostDto(
         String title,
         String body,
         String eventDate,
-        List<String> images,
+        List<ImageInfo> images,  // List<String> → List<ImageInfo> (url + path)
         String thumbnailUrl,
         String authorId,
         String authorName,
