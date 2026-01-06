@@ -452,8 +452,9 @@ public class MemberService {
     public MemberDTO getMemberByUid(String uid) {
         try {
             Firestore db = FirestoreClient.getFirestore();
-
-            // ... (db null 체크 등 기존 로직 생략) ...
+            if (db == null) {
+                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "Firestore가 초기화되지 않았습니다.");
+            }
 
             ApiFuture<com.google.cloud.firestore.DocumentSnapshot> future = db.collection("members")
                     .document(uid)
@@ -461,7 +462,6 @@ public class MemberService {
 
             com.google.cloud.firestore.DocumentSnapshot document = future.get();
 
-            // 1. 문서가 아예 없으면 404
             if (!document.exists()) {
                 throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "멤버를 찾을 수 없습니다: " + uid);
             }
@@ -471,13 +471,12 @@ public class MemberService {
                 throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "데이터 오류");
             }
 
-            // [변경 포인트] 2. 문서가 있어도 상태가 '탈퇴(ANONYMIZED)'면 -> 없는 사람 취급 (404)
+            // 탈퇴 회원 -> 없는 사람 취급 (404)
             if (MemberStatus.ANONYMIZED.equals(member.status())) {
                 throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "탈퇴한 회원입니다.");
             }
 
             return member;
-
         } catch (InterruptedException | ExecutionException e) {
             log.error("멤버 조회 실패 - uid: {}", uid, e);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "멤버 조회 중 오류가 발생했습니다.");
