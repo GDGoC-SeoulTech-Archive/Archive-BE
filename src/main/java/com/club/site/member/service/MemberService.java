@@ -2,11 +2,7 @@ package com.club.site.member.service;
 
 import com.club.site.common.exception.BusinessException;
 import com.club.site.common.error.ErrorCode;
-import com.club.site.member.dto.GithubDTO;
-import com.club.site.member.dto.MemberDTO;
-import com.club.site.member.dto.MemberListResponse;
-import com.club.site.member.dto.MemberListItemDTO;
-import com.club.site.member.dto.SocialSummary;
+import com.club.site.member.dto.*;
 import com.club.site.model.MemberStatus;
 import com.club.site.model.Part;
 import com.club.site.model.SocialLink;
@@ -450,6 +446,9 @@ public class MemberService {
      * @return MemberDTO (ANONYMIZED 상태면 익명화된 필드만 반환)
      * @throws BusinessException MEMBER_NOT_FOUND: uid에 해당하는 멤버 없음
      */
+    /**
+     * 멤버 상세 조회 (공개)
+     */
     public MemberDTO getMemberByUid(String uid) {
         try {
             Firestore db = FirestoreClient.getFirestore();
@@ -469,12 +468,12 @@ public class MemberService {
 
             MemberDTO member = convertDocumentToMemberDTO(document);
             if (member == null) {
-                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "멤버 데이터를 파싱할 수 없습니다.");
+                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "데이터 오류");
             }
 
-            // ANONYMIZED 상태면 익명화 처리
+            // 탈퇴 회원 -> 없는 사람 취급 (404)
             if (MemberStatus.ANONYMIZED.equals(member.status())) {
-                return anonymizeMember(member);
+                throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "탈퇴한 회원입니다.");
             }
 
             return member;
@@ -484,25 +483,60 @@ public class MemberService {
         }
     }
 
+
     /**
      * 멤버 익명화 처리
      * ANONYMIZED 상태일 때 PII 필드 제거/익명화
      */
-    private MemberDTO anonymizeMember(MemberDTO member) {
-        // MemberDTO는 record이므로 새 인스턴스 생성
-        return new MemberDTO(
-                member.uid(),
-                "탈퇴회원",
-                member.generation(), // 기수는 유지 가능 (정책에 따라)
-                member.part(), // 파트는 유지 가능 (정책에 따라)
-                null, // bio 제거
-                null, // socialLinks 제거
-                null, // skillIds 제거
-                null, // github 정보 제거 (PII)
-                MemberStatus.ANONYMIZED,
-                member.createdAt(),
-                member.updatedAt()
-        );
+    public void anonymizeMember(String uid) {
+        Firestore db = FirestoreClient.getFirestore();
+
+        try {
+            // 1. 스킬 역인덱스 정리를 위해 먼저 기존 정보를 조회
+            // (그냥 지워버리면 어떤 스킬에 이 사람이 등록돼 있었는지 알 수 없으므로)
+            DocumentSnapshot document = db.collection("members").document(uid).get().get();
+
+            if (!document.exists()) {
+                throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "존재하지 않는 회원입니다.");
+            }
+
+            // 2. 'skill_members' (역인덱스) 컬렉션에서 내 정보 제거
+            // 예: Java 검색 결과에 탈퇴한 회원이 나오면 안 되니까 제거
+            List<String> skillIds = FirestoreUtils.asStringList(document.get("skillIds"));
+            if (skillIds != null) {
+                for (String skillId : skillIds) {
+                    try {
+                        db.collection("skill_members")
+                                .document(skillId)
+                                .collection("members")
+                                .document(uid)
+                                .delete(); // Fire-and-forget (비동기 삭제)
+                    } catch (Exception e) {
+                        log.warn("스킬 역인덱스 삭제 실패 - skillId: {}, error: {}", skillId, e.getMessage());
+                    }
+                }
+            }
+
+            // 3. 본문(members) 문서 익명화 (개인정보 null 처리)
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("status", MemberStatus.ANONYMIZED.name()); // 상태 변경
+            updates.put("name", "탈퇴회원"); // 이름 변경 (또는 "알수없음")
+            updates.put("bio", null);      // 소개글 삭제
+            updates.put("socialLinks", null); // 소셜 링크 삭제
+            updates.put("github", null);   // 깃허브 정보(사진 등) 삭제
+            updates.put("skillIds", null); // 스킬 목록 삭제
+            updates.put("updatedAt", Timestamp.now());
+
+            // update() 메서드는 Map에 있는 필드만 변경하고, 나머지는 유지합니다.
+            // (기수나 파트는 통계용으로 남겨둘 수도 있습니다. 지우려면 null 추가하세요)
+            db.collection("members").document(uid).update(updates).get();
+
+            log.info("회원 탈퇴(익명화) 완료 - uid: {}", uid);
+
+        } catch (Exception e) {
+            log.error("회원 탈퇴 처리 실패 - uid: {}", uid, e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "회원 탈퇴 처리에 실패했습니다.");
+        }
     }
 
     /**
@@ -723,4 +757,154 @@ public class MemberService {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "회원가입 실패: " + e.getMessage());
         }
     }
+
+    // 프로필 수정 (추가)
+    public MemberDTO updateMyProfile(String uid, MeUpdateRequest request) {
+        Firestore db = FirestoreClient.getFirestore();
+        try {
+            Map<String, Object> updates = new HashMap<>();
+            if (request.bio() != null) {
+                updates.put("bio", request.bio());
+            }
+            if (request.socialLinks() != null) {
+                List<Map<String, String>> linkMaps = request.socialLinks().stream()
+                        .map(req -> {
+                            try {
+                                SocialLinkType.valueOf(req.type());
+                            } catch (IllegalArgumentException e) {
+                            }
+                            return Map.of(
+                                    "type", req.type(),
+                                    "url", req.url()
+                            );
+                        })
+                        .collect(Collectors.toList());
+                updates.put("socialLinks", linkMaps);
+            }
+
+            // SkillIds 업데이트
+            if (request.skillIds() != null) {
+                updates.put("skillIds", request.skillIds());
+            }
+
+            updates.put("updatedAt", Timestamp.now());
+
+            // Firestore 업데이트
+            db.collection("members").document(uid).update(updates).get();
+            return getMemberByUid(uid);
+
+        } catch (Exception e) {
+            log.error("프로필 업데이트 실패 - uid: {}", uid, e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "프로필 수정 중 오류가 발생했습니다.");
+        }
+    }
+
+    public MeBootstrapResponse bootstrap(String uid, MeBootstrapRequest request, String photoUrl) {
+        Firestore db = FirestoreClient.getFirestore();
+
+        try {
+            // 1. Part 문자열 -> Enum 변환
+            Part part = Part.parse(request.part());
+
+            // 2. MemberDTO 생성 (초기값 세팅)
+            MemberDTO newMember = new MemberDTO(
+                    uid,
+                    request.name(),
+                    request.generation(),
+                    part,
+                    "반갑습니다!", // 기본 Bio
+                    new ArrayList<>(), // SocialLinks 빈 리스트
+                    new ArrayList<>(), // SkillIds 빈 리스트
+                    new GithubDTO(null, photoUrl), // Github 정보는 사진만
+                    MemberStatus.ACTIVE,
+                    FirestoreUtils.toIsoString(Timestamp.now()), // createdAt
+                    FirestoreUtils.toIsoString(Timestamp.now())  // updatedAt
+            );
+
+            // 3. DB 저장 (기존 로직 활용)
+            // 아래 saveLogic은 signUp 메서드 내용을 별도 메서드로 뺐다고 가정하거나, 직접 구현
+            Map<String, Object> data = convertMemberDtoToMap(newMember); // 별도 유틸 메서드 필요
+            data.put("createdAt", Timestamp.now());
+            data.put("updatedAt", Timestamp.now());
+
+            db.collection("members").document(uid).set(data).get();
+
+            // 4. 응답 생성 (isProfileComplete = true)
+            return new MeBootstrapResponse(newMember, true);
+
+        } catch (Exception e) {
+            log.error("Bootstrap 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "초기 프로필 설정 실패");
+        }
+    }
+
+    // (참고) DTO -> Map 변환 헬퍼
+    private Map<String, Object> convertMemberDtoToMap(MemberDTO member) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("uid", member.uid());
+        data.put("name", member.name());
+        data.put("generation", member.generation());
+        data.put("part", member.part().name());
+        data.put("bio", member.bio());
+        data.put("socialLinks", Collections.emptyList());
+        data.put("skillIds", Collections.emptyList());
+        data.put("github", Map.of("photoUrl", member.github().photoUrl()));
+        data.put("status", member.status().name());
+        return data;
+    }
+
+    // (MeController용)프로필 수정
+    public MemberDTO updateMe(String uid, String bio, List<SocialLinkRequest> socialLinks, List<String> skillIds) {
+        Firestore db = FirestoreClient.getFirestore();
+
+        try {
+            Map<String, Object> updates = new HashMap<>();
+
+            // 1. Bio 업데이트 (null이 아닐 때만 업데이트하려면 null 체크 추가)
+            // 프론트에서 값을 지우려고 빈 문자열 ""을 보낼 수도 있으므로 그대로 put
+            if (bio != null) {
+                updates.put("bio", bio);
+            }
+
+            // 2. SocialLinks 변환 (Request DTO List -> Map List)
+            // Firestore는 커스텀 객체 리스트 저장이 까다로우므로 Map List로 변환하여 저장
+            if (socialLinks != null) {
+                List<Map<String, String>> linkMaps = socialLinks.stream()
+                        .map(link -> {
+                            // (선택) Enum 유효성 검증 로직
+                            // try { SocialLinkType.valueOf(link.type()); } catch ...
+
+                            return Map.of(
+                                    "type", link.type(),
+                                    "url", link.url()
+                            );
+                        })
+                        .collect(Collectors.toList());
+                updates.put("socialLinks", linkMaps);
+            }
+
+            // 3. SkillIds 업데이트
+            if (skillIds != null) {
+                updates.put("skillIds", skillIds);
+
+                // [심화] 만약 스킬별 검색(역인덱스) 기능을 쓴다면,
+                // 여기서 skill_members 컬렉션도 같이 갱신해줘야 데이터가 꼬이지 않습니다.
+                // 일단은 member 문서만 업데이트합니다.
+            }
+
+            // 4. 수정 시간 갱신
+            updates.put("updatedAt", Timestamp.now());
+
+            // 5. Firestore 업데이트 실행 (update는 해당 필드만 변경, set은 덮어쓰기)
+            db.collection("members").document(uid).update(updates).get();
+
+            // 6. 업데이트된 최신 정보를 조회해서 반환
+            return getMemberByUid(uid);
+
+        } catch (Exception e) {
+            log.error("내 정보 수정 실패 - uid: {}, error: {}", uid, e.getMessage());
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "내 정보 수정에 실패했습니다.");
+        }
+    }
+
 }
