@@ -39,3 +39,6 @@ out/
 ### Firebase Account key ###
 src/main/resources/gdgoc-web-server-firebase-adminsdk-fbsvc-6779916397.json
 src/main/resources/serviceAccountKey.json
+
+### Test files ###
+src/main/resources/static/token.html

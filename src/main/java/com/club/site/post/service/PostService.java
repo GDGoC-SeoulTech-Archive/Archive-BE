@@ -176,7 +176,7 @@ public class PostService {
     }
 
     /**
-     * 게시글 수정 (Admin)
+     * 게시글 수정 (로그인 필요, 본인 게시글만 수정 가능)
      * @param actorUid 수정자 UID
      * @param postId 게시글 ID
      * @param request 게시글 수정 요청
@@ -187,6 +187,12 @@ public class PostService {
         DocumentSnapshot existing = ref.get().get();
         if (!existing.exists()) {
             throw new ApiException("NOT_FOUND", "Post not found", HttpStatus.NOT_FOUND);
+        }
+        
+        // 본인 게시글만 수정 가능
+        String authorId = existing.getString("authorId");
+        if (authorId == null || !authorId.equals(actorUid)) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED, "본인의 게시글만 수정할 수 있습니다.");
         }
 
         // 1. Validation
@@ -245,7 +251,7 @@ public class PostService {
     }
 
     /**
-     * 게시글 삭제 (Admin, 하드 삭제)
+     * 게시글 삭제 (로그인 필요, 본인 게시글만 삭제 가능, 하드 삭제)
      * Storage 이미지도 함께 삭제
      */
     public void deletePost(String actorUid, String postId) throws Exception {
@@ -253,6 +259,12 @@ public class PostService {
         DocumentSnapshot existing = ref.get().get();
         if (!existing.exists()) {
             throw new ApiException("NOT_FOUND", "Post not found", HttpStatus.NOT_FOUND);
+        }
+        
+        // 본인 게시글만 삭제 가능
+        String authorId = existing.getString("authorId");
+        if (authorId == null || !authorId.equals(actorUid)) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED, "본인의 게시글만 삭제할 수 있습니다.");
         }
         
         // 1. 이미지 Storage에서 삭제

@@ -43,14 +43,18 @@ public class SecurityConfig {
                         // 2. Preflight 요청(OPTIONS)은 무조건 허용 (CORS 처리를 위해)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 3. Swagger(SpringDoc) 관련 경로 허용
+                        // 3. Static 리소스 허용 (테스트 페이지 등)
+                        .requestMatchers("/token.html").permitAll()
+                        .requestMatchers("/**/*.html", "/**/*.css", "/**/*.js", "/**/*.png", "/**/*.jpg", "/**/*.gif", "/**/*.ico", "/**/*.svg").permitAll()
+                        
+                        // 4. Swagger(SpringDoc) 관련 경로 허용
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
 
-                        // 4. Public API (로그인 없이 접근 가능)
+                        // 5. Public API (로그인 없이 접근 가능)
                         // Members API
                         .requestMatchers(HttpMethod.GET, "/api/v1/members", "/api/v1/members/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/members/init").permitAll()
@@ -64,7 +68,7 @@ public class SecurityConfig {
                         // Health Check
                         .requestMatchers(HttpMethod.GET, "/api/v1/health").permitAll()
 
-                        // 5. 나머지 API는 인증 필요
+                        // 6. 나머지 API는 인증 필요
                         .anyRequest().authenticated()
                 )
 

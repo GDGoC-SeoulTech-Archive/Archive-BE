@@ -5,10 +5,12 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -34,6 +36,21 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail("BAD_REQUEST", e.getMessage()));
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
+        String message = e.getMessage();
+        if (message != null && message.contains("Required request body is missing")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.fail("BAD_REQUEST", "요청 body가 필요합니다. JSON 형식으로 데이터를 전송해주세요."));
+        }
+        if (message != null && message.contains("JSON parse error")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.fail("BAD_REQUEST", "잘못된 JSON 형식입니다. 요청 body를 확인해주세요."));
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail("BAD_REQUEST", "요청 body를 읽을 수 없습니다: " + (message != null ? message : "알 수 없는 오류")));
+    }
+
     @ExceptionHandler(FailedPreconditionException.class)
     public ResponseEntity<ApiResponse<Void>> handleFirestoreIndexException(FailedPreconditionException e) {
         log.error("Firestore index required: {}", e.getMessage(), e);
@@ -52,8 +69,22 @@ public class ApiExceptionHandler {
                         "Firestore 인덱스가 필요합니다. Firebase Console에서 인덱스를 생성해주세요."));
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Void> handleNoResourceFound(NoResourceFoundException e) {
+        // favicon.ico 같은 static resource 에러는 로그에서 제외 (정상적인 동작)
+        if (!e.getResourcePath().equals("/favicon.ico")) {
+            log.warn("Resource not found: {}", e.getResourcePath());
+        }
+        // 404 응답 반환 (Spring이 기본 처리)
+        return ResponseEntity.notFound().build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception e) {
+        // NoResourceFoundException은 이미 처리했으므로 제외
+        if (e instanceof NoResourceFoundException) {
+            return ResponseEntity.notFound().build();
+        }
         log.error("Unexpected error", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.fail("INTERNAL_ERROR", "Unexpected error"));

@@ -53,7 +53,7 @@ public class PostController {
     }
 
     /**
-     * 게시글 생성 (Admin)
+     * 게시글 생성 (로그인 필요)
      * POST /api/v1/posts
      */
     @PostMapping
@@ -63,11 +63,6 @@ public class PostController {
     ) throws Exception {
         FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
         
-        // Admin 권한 체크
-        if (!isAdmin(principal)) {
-            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
-        }
-        
         PostDto postDto = postService.createPost(principal.uid(), request);
         PostDetailResponse.PostDetail postDetail = PostDetailResponse.PostDetail.from(postDto);
         PostCreateResponse response = new PostCreateResponse(postDto.id(), postDetail);
@@ -75,16 +70,9 @@ public class PostController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(response));
     }
-    
-    /**
-     * Admin 권한 체크
-     */
-    private boolean isAdmin(FirebasePrincipal principal) {
-        return principal != null && "admin".equalsIgnoreCase(principal.role());
-    }
 
     /**
-     * 게시글 수정 (Admin)
+     * 게시글 수정 (로그인 필요)
      * PUT /api/v1/posts/{postId}
      */
     @PutMapping("/{postId}")
@@ -95,20 +83,15 @@ public class PostController {
     ) throws Exception {
         FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
         
-        // Admin 권한 체크
-        if (!isAdmin(principal)) {
-            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
-        }
-        
         PostDto postDto = postService.updatePost(principal.uid(), postId, request);
         PostDetailResponse.PostDetail postDetail = PostDetailResponse.PostDetail.from(postDto);
-        PostUpdateResponse response = new PostUpdateResponse(postDto.id(), postDetail);
+        PostUpdateResponse response = new PostUpdateResponse(postId, postDetail);
         
         return ApiResponse.ok(response);
     }
 
     /**
-     * 게시글 삭제 (Admin, 하드 삭제)
+     * 게시글 삭제 (로그인 필요, 하드 삭제)
      * DELETE /api/v1/posts/{postId}
      */
     @DeleteMapping("/{postId}")
@@ -117,11 +100,6 @@ public class PostController {
             @PathVariable String postId
     ) throws Exception {
         FirebasePrincipal principal = (FirebasePrincipal) authentication.getPrincipal();
-        
-        // Admin 권한 체크
-        if (!isAdmin(principal)) {
-            throw new BusinessException(ErrorCode.ADMIN_REQUIRED);
-        }
         
         postService.deletePost(principal.uid(), postId);
         return ApiResponse.ok(new PostDeleteResponse(true));

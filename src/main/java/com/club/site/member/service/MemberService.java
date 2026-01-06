@@ -500,7 +500,19 @@ public class MemberService {
                 throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND, "존재하지 않는 회원입니다.");
             }
 
-            // 2. 'skill_members' (역인덱스) 컬렉션에서 내 정보 제거
+            // 2. 탈퇴 전 기수+파트 정보 저장 (게시글 authorName 업데이트용)
+            String generation = document.getString("generation");
+            String partStr = document.getString("part");
+            Part part = null;
+            if (partStr != null && !partStr.isEmpty()) {
+                try {
+                    part = Part.parse(partStr);
+                } catch (Exception e) {
+                    log.warn("Part 변환 실패 - part: {}, error: {}", partStr, e.getMessage());
+                }
+            }
+
+            // 3. 'skill_members' (역인덱스) 컬렉션에서 내 정보 제거
             // 예: Java 검색 결과에 탈퇴한 회원이 나오면 안 되니까 제거
             List<String> skillIds = FirestoreUtils.asStringList(document.get("skillIds"));
             if (skillIds != null) {
@@ -517,7 +529,7 @@ public class MemberService {
                 }
             }
 
-            // 3. 본문(members) 문서 익명화 (개인정보 null 처리)
+            // 4. 본문(members) 문서 익명화 (개인정보 null 처리)
             Map<String, Object> updates = new HashMap<>();
             updates.put("status", MemberStatus.ANONYMIZED.name()); // 상태 변경
             updates.put("name", "탈퇴회원"); // 이름 변경 (또는 "알수없음")
@@ -531,11 +543,61 @@ public class MemberService {
             // (기수나 파트는 통계용으로 남겨둘 수도 있습니다. 지우려면 null 추가하세요)
             db.collection("members").document(uid).update(updates).get();
 
+            // 5. 해당 멤버가 작성한 게시글들의 authorName을 "기수+파트" 형식으로 업데이트
+            if (generation != null && part != null) {
+                updatePostAuthorNames(db, uid, generation, part);
+            } else {
+                log.warn("기수 또는 파트 정보가 없어 게시글 authorName을 업데이트할 수 없습니다 - uid: {}, generation: {}, part: {}", 
+                        uid, generation, part);
+            }
+
             log.info("회원 탈퇴(익명화) 완료 - uid: {}", uid);
 
         } catch (Exception e) {
             log.error("회원 탈퇴 처리 실패 - uid: {}", uid, e);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "회원 탈퇴 처리에 실패했습니다.");
+        }
+    }
+
+    /**
+     * 탈퇴한 멤버가 작성한 게시글들의 authorName을 "기수+파트" 형식으로 업데이트
+     * 예: "5기 WEB·FE"
+     */
+    private void updatePostAuthorNames(Firestore db, String authorId, String generation, Part part) {
+        try {
+            // 해당 멤버가 작성한 모든 게시글 조회
+            Query query = db.collection("posts")
+                    .whereEqualTo("authorId", authorId);
+            
+            QuerySnapshot snapshot = query.get().get();
+            List<QueryDocumentSnapshot> posts = snapshot.getDocuments();
+            
+            if (posts.isEmpty()) {
+                log.info("업데이트할 게시글이 없습니다 - authorId: {}", authorId);
+                return;
+            }
+            
+            // 기수+파트 형식으로 authorName 생성
+            String authorName = generation + " " + part.wireValue(); // 예: "5기 WEB·FE"
+            
+            // 모든 게시글의 authorName 업데이트
+            int updatedCount = 0;
+            for (QueryDocumentSnapshot postDoc : posts) {
+                try {
+                    postDoc.getReference().update("authorName", authorName).get();
+                    updatedCount++;
+                } catch (Exception e) {
+                    log.warn("게시글 authorName 업데이트 실패 - postId: {}, error: {}", 
+                            postDoc.getId(), e.getMessage());
+                }
+            }
+            
+            log.info("게시글 authorName 업데이트 완료 - authorId: {}, 업데이트된 게시글 수: {}, authorName: {}", 
+                    authorId, updatedCount, authorName);
+                    
+        } catch (Exception e) {
+            // 게시글 업데이트 실패해도 탈퇴 처리는 계속 진행
+            log.error("게시글 authorName 업데이트 중 오류 발생 - authorId: {}, error: {}", authorId, e.getMessage());
         }
     }
 
