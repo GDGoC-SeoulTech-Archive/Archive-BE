@@ -625,24 +625,24 @@ public class MemberService {
                     : member.bio();
         }
 
-        // socialSummary 생성
-        boolean hasGithub = false;
-        boolean hasLinkedin = false;
-        boolean hasInstagram = false;
-        
-        if (member.socialLinks() != null) {
-            for (SocialLink link : member.socialLinks()) {
-                if (link.type() == SocialLinkType.GITHUB) {
-                    hasGithub = true;
-                } else if (link.type() == SocialLinkType.LINKEDIN) {
-                    hasLinkedin = true;
-                } else if (link.type() == SocialLinkType.INSTAGRAM) {
-                    hasInstagram = true;
-                }
-            }
-        }
-        
-        SocialSummary socialSummary = new SocialSummary(hasGithub, hasLinkedin, hasInstagram);
+        // socialSummary 생성 -> 이렇게 넘기면 fe에서 링크 대신 존재 여부만 받습니다.(삭제)
+        //        boolean hasGithub = false;
+        //        boolean hasLinkedin = false;
+        //        boolean hasInstagram = false;
+        //
+        //        if (member.socialLinks() != null) {
+        //            for (SocialLink link : member.socialLinks()) {
+        //                if (link.type() == SocialLinkType.GITHUB) {
+        //                    hasGithub = true;
+        //                } else if (link.type() == SocialLinkType.LINKEDIN) {
+        //                    hasLinkedin = true;
+        //                } else if (link.type() == SocialLinkType.INSTAGRAM) {
+        //                    hasInstagram = true;
+        //                }
+        //            }
+        //        }
+        //
+        //        SocialSummary socialSummary = new SocialSummary(hasGithub, hasLinkedin, hasInstagram);
 
         return new MemberListItemDTO(
                 member.uid(),
@@ -652,7 +652,7 @@ public class MemberService {
                 member.skillIds(),
                 member.github(),
                 bioShort,
-                socialSummary,
+                member.socialLinks(),
                 member.status()
         );
     }
@@ -670,7 +670,7 @@ public class MemberService {
                             item.generation(),
                             item.part(),
                             null, // bio는 리스트에 없음
-                            null, // socialLinks는 리스트에 없음
+                            item.socialLinks(),
                             item.skillIds(),
                             item.github(),
                             item.status(),
