@@ -546,6 +546,7 @@ public class MemberService {
             // 5. 해당 멤버가 작성한 게시글들의 authorName을 "기수+파트" 형식으로 업데이트
             if (generation != null && part != null) {
                 updatePostAuthorNames(db, uid, generation, part);
+                updateProjectAuthorNames(db, uid, generation, part);
             } else {
                 log.warn("기수 또는 파트 정보가 없어 게시글 authorName을 업데이트할 수 없습니다 - uid: {}, generation: {}, part: {}", 
                         uid, generation, part);
@@ -604,6 +605,38 @@ public class MemberService {
     /**
      * pageSize 검증
      */
+    private void updateProjectAuthorNames(Firestore db, String authorId, String generation, Part part) {
+        try {
+            Query query = db.collection("projects")
+                    .whereEqualTo("authorId", authorId);
+
+            QuerySnapshot snapshot = query.get().get();
+            List<QueryDocumentSnapshot> projects = snapshot.getDocuments();
+
+            if (projects.isEmpty()) {
+                log.info("No projects found for authorId: {}", authorId);
+                return;
+            }
+
+            String authorName = generation + " " + part.wireValue();
+
+            int updatedCount = 0;
+            for (QueryDocumentSnapshot projectDoc : projects) {
+                try {
+                    projectDoc.getReference().update("authorName", authorName).get();
+                    updatedCount++;
+                } catch (Exception e) {
+                    log.warn("Project authorName update failed - projectId: {}, error: {}", projectDoc.getId(), e.getMessage());
+                }
+            }
+
+            log.info("Project authorName update complete - authorId: {}, updated: {}, authorName: {}", authorId, updatedCount, authorName);
+
+        } catch (Exception e) {
+            log.error("Project authorName update error - authorId: {}, error: {}", authorId, e.getMessage());
+        }
+    }
+
     private int validatePageSize(Integer pageSize) {
         if (pageSize == null) {
             return defaultPageSize;
