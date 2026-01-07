@@ -328,6 +328,15 @@ public class PostService {
 
     /**
      * ImageInfo 리스트 검증 및 정리
+     * 
+     * 검증 규칙:
+     * - images[].url: 필수, HTTP/HTTPS URL 형식만 허용
+     * - images[].path: optional, Storage 내부 상대 경로만 허용 (URL 형식 불가)
+     * - null/빈 문자열 항목은 제외 처리
+     * 
+     * 참고:
+     * - 이미지 파일 타입(jpg/png/webp) 검증은 클라이언트의 Firebase Storage 업로드 단계에서 처리
+     * - 서버는 이미지 파일 자체를 검증하지 않으며, images[].url/path 형식만 검증
      */
     private static List<ImageInfo> sanitizeImages(List<ImageInfo> images) {
         if (images == null) {
@@ -338,9 +347,9 @@ public class PostService {
             if (image == null || image.url() == null || image.url().isBlank()) {
                 continue;
             }
-            // URL 검증
+            // URL 검증 (HTTP/HTTPS 형식만 허용)
             UrlUtils.requireHttpUrl(image.url(), "images.url");
-            // path는 optional이지만, 있으면 검증
+            // path는 optional이지만, 있으면 검증 (Storage 내부 경로만 허용)
             if (image.path() != null && !image.path().isBlank()) {
                 // path는 상대 경로여야 함 (예: "posts/abc/image.jpg")
                 if (image.path().startsWith("http://") || image.path().startsWith("https://")) {

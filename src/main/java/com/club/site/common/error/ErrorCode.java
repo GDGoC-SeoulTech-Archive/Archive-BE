@@ -27,6 +27,10 @@ public enum ErrorCode {
     POST_NOT_FOUND("POST_NOT_FOUND", "게시글을 찾을 수 없습니다."),
     POST_ACCESS_DENIED("POST_ACCESS_DENIED", "게시글에 접근할 수 없습니다."),
 
+    // 댓글
+    COMMENT_NOT_FOUND("COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다."),
+    COMMENT_ACCESS_DENIED("COMMENT_ACCESS_DENIED", "댓글에 접근할 수 없습니다."),
+
     // 관리자
     SUPER_ADMIN_REQUIRED("SUPER_ADMIN_REQUIRED", "슈퍼 관리자 권한이 필요합니다."),
     ADMIN_REQUIRED("ADMIN_REQUIRED", "관리자 권한이 필요합니다."),
