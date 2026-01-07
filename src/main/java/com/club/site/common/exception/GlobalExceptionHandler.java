@@ -24,9 +24,9 @@ public class GlobalExceptionHandler {
     private HttpStatus getHttpStatus(ErrorCode errorCode) {
         return switch (errorCode) {
             case UNAUTHORIZED, INVALID_TOKEN, TOKEN_EXPIRED -> HttpStatus.UNAUTHORIZED;
-            case FORBIDDEN, SUPER_ADMIN_REQUIRED, ADMIN_REQUIRED, POST_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
+            case FORBIDDEN, SUPER_ADMIN_REQUIRED, ADMIN_REQUIRED, POST_ACCESS_DENIED, COMMENT_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
             case INVALID_INPUT, BAD_REQUEST, INVALID_GENERATION, INVALID_PART -> HttpStatus.BAD_REQUEST;
-            case MEMBER_NOT_FOUND, POST_NOT_FOUND, SKILL_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case MEMBER_NOT_FOUND, POST_NOT_FOUND, SKILL_NOT_FOUND, COMMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }
