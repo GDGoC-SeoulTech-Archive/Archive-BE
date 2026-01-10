@@ -547,8 +547,9 @@ public class MemberService {
             if (generation != null && part != null) {
                 updatePostAuthorNames(db, uid, generation, part);
                 updateProjectAuthorNames(db, uid, generation, part);
+                updateCommentAuthorNames(db, uid, generation, part);
             } else {
-                log.warn("기수 또는 파트 정보가 없어 게시글 authorName을 업데이트할 수 없습니다 - uid: {}, generation: {}, part: {}", 
+                log.warn("기수 또는 파트 정보가 없어 게시글/댓글 authorName을 업데이트할 수 없습니다 - uid: {}, generation: {}, part: {}", 
                         uid, generation, part);
             }
 
@@ -599,6 +600,78 @@ public class MemberService {
         } catch (Exception e) {
             // 게시글 업데이트 실패해도 탈퇴 처리는 계속 진행
             log.error("게시글 authorName 업데이트 중 오류 발생 - authorId: {}, error: {}", authorId, e.getMessage());
+        }
+    }
+
+    /**
+     * 탈퇴한 멤버가 작성한 댓글들의 authorName을 "기수+파트" 형식으로 업데이트
+     * 예: "5기 WEB·FE"
+     */
+    private void updateCommentAuthorNames(Firestore db, String authorId, String generation, Part part) {
+        try {
+            // 모든 게시글을 순회하면서 해당 멤버가 작성한 댓글 찾기
+            // Firestore는 서브컬렉션에 대한 직접 쿼리가 제한적이므로,
+            // 모든 posts를 순회하면서 각 게시글의 comments 서브컬렉션에서 authorId로 조회
+            Query postsQuery = db.collection("posts");
+            QuerySnapshot postsSnapshot = postsQuery.get().get();
+            List<QueryDocumentSnapshot> posts = postsSnapshot.getDocuments();
+
+            if (posts.isEmpty()) {
+                log.info("업데이트할 댓글이 있는 게시글이 없습니다 - authorId: {}", authorId);
+                return;
+            }
+
+            // 기수+파트 형식으로 authorName 생성
+            String authorName = generation + " " + part.wireValue(); // 예: "5기 WEB·FE"
+
+            int totalUpdatedCount = 0;
+            for (QueryDocumentSnapshot postDoc : posts) {
+                String postId = postDoc.getId();
+                try {
+                    // 각 게시글의 comments 서브컬렉션에서 authorId로 조회
+                    Query commentsQuery = db.collection("posts")
+                            .document(postId)
+                            .collection("comments")
+                            .whereEqualTo("authorId", authorId);
+
+                    QuerySnapshot commentsSnapshot = commentsQuery.get().get();
+                    List<QueryDocumentSnapshot> comments = commentsSnapshot.getDocuments();
+
+                    if (comments.isEmpty()) {
+                        continue;
+                    }
+
+                    // 해당 게시글의 모든 댓글 authorName 업데이트
+                    int updatedCount = 0;
+                    for (QueryDocumentSnapshot commentDoc : comments) {
+                        try {
+                            commentDoc.getReference().update("authorName", authorName).get();
+                            updatedCount++;
+                        } catch (Exception e) {
+                            log.warn("댓글 authorName 업데이트 실패 - postId: {}, commentId: {}, error: {}",
+                                    postId, commentDoc.getId(), e.getMessage());
+                        }
+                    }
+
+                    if (updatedCount > 0) {
+                        totalUpdatedCount += updatedCount;
+                        log.debug("게시글 {}의 댓글 {}개 authorName 업데이트 완료", postId, updatedCount);
+                    }
+                } catch (Exception e) {
+                    log.warn("게시글 {}의 댓글 조회/업데이트 실패 - error: {}", postId, e.getMessage());
+                }
+            }
+
+            if (totalUpdatedCount > 0) {
+                log.info("댓글 authorName 업데이트 완료 - authorId: {}, 업데이트된 댓글 수: {}, authorName: {}",
+                        authorId, totalUpdatedCount, authorName);
+            } else {
+                log.info("업데이트할 댓글이 없습니다 - authorId: {}", authorId);
+            }
+
+        } catch (Exception e) {
+            // 댓글 업데이트 실패해도 탈퇴 처리는 계속 진행
+            log.error("댓글 authorName 업데이트 중 오류 발생 - authorId: {}, error: {}", authorId, e.getMessage());
         }
     }
 

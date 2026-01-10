@@ -65,6 +65,9 @@ public class SecurityConfig {
                         // Projects API (Public Read)
                         .requestMatchers(HttpMethod.GET, "/api/v1/projects", "/api/v1/projects/**").permitAll()
                         
+                        // Comments API (Public Read)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/posts/*/comments").permitAll()
+                        
                         // Skills API (Public Read)
                         .requestMatchers(HttpMethod.GET, "/api/v1/skills").permitAll()
                         
