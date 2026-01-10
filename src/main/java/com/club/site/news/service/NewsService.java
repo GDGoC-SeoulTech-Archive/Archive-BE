@@ -98,7 +98,7 @@ public class NewsService {
                 .type("TECH")
                 .date(makeDate(2026, 2, 20)) // 2월 20일로 설정
                 .imageUrl("https://images.unsplash.com/photo-1605379399642-870262d3d051?w=500&auto=format&fit=crop")
-                .content("오거나이저 염정우님의 심도 깊은 스프링 부트 강의가 있습니다.")
+                .content("임채영님의 심도 깊은 스프링 부트 강의가 있습니다.")
                 .body("이번 주제는 'Spring Boot 실무 적용'입니다.\n\n" +
                         "발표자: 염정우\n" +
                         "일시: 2월 20일 19:00\n" +
